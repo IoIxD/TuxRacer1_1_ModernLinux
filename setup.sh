@@ -83,6 +83,9 @@ __EOF__
     if [ "$fatal" != "" ]; then
         "$setup" $*
         failed=$?
+        if [ $failed == 127 ]; then
+            echo "Hint: if the error is file not found, this indicates an inability to run 32-bit programs. Check how to run them on your distro."
+        fi
     else
         "$setup" $* 2>/dev/null
         failed=$?
@@ -95,10 +98,22 @@ __EOF__
 # Try to run the setup program
 status=0
 rm -f "$setup"
-try_run setup.gtk $* || try_run setup $* -fatal || {
-    echo "The setup program seems to have failed on $arch/$libc"
-    echo
-    echo "Please contact Sunspire Studios Technical Support at support@sunspirestudios.com"
-    status=1
-}
+try_run setup.gtk $*
+status=$?
+if [ $status -ne 0 ]; then
+    if [ $status -eq 127 ]; then
+        valid=0
+        while [ $valid -eq 0 ]; do
+            read -p "You may run the CLI installer, but you may not be able to run the installed game (y/N):" yn
+            case $yn in
+                [Yy]* ) valid=1; break;;
+                [Nn]* ) valid=1; exit;;
+            esac
+        done
+    fi
+    try_run setup $* fatal || {
+        echo "The setup program seems to have failed on $arch/$libc"
+        status=1
+    }
+fi
 exit $status
