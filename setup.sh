@@ -104,7 +104,7 @@ if [ $status -ne 0 ]; then
     if [ $status -eq 127 ]; then
         valid=0
         while [ $valid -eq 0 ]; do
-            read -p "You may run the CLI installer, but you may not be able to run the installed game (y/N):" yn
+            read -p "You may run the CLI installer, but you may not be able to run the installed game (y/n):" yn
             case $yn in
                 [Yy]* ) valid=1; break;;
                 [Nn]* ) valid=1; exit;;

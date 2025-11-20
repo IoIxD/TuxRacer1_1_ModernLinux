@@ -96,10 +96,6 @@ pub unsafe extern "C" fn SDL_JoystickOpen(index: c_int) -> *mut type_defs::SDL_J
     window().lock().joystick_open(index)
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn SDL_LockAudio() {
-    window().lock().lock_audio()
-}
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_NumJoysticks() -> c_int {
     window().lock().num_joysticks()
 }
@@ -133,10 +129,6 @@ pub unsafe extern "C" fn SDL_SetVideoMode(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_ShowCursor(toggle: c_int) -> c_int {
     window().lock().show_cursor(toggle)
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SDL_UnlockAudio() {
-    window().lock().unlock_audio()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_WarpMouse(x: u16, y: u16) {

@@ -27,7 +27,6 @@ pub trait Window {
     fn joystick_num_axes(&mut self, joystick: *mut type_defs::SDL_Joystick) -> i32;
     fn joystick_num_buttons(&mut self, joystick: *mut type_defs::SDL_Joystick) -> i32;
     fn joystick_open(&mut self, index: i32) -> *mut type_defs::SDL_Joystick;
-    fn lock_audio(&mut self);
     fn num_joysticks(&mut self) -> i32;
     fn poll_event(&mut self, event: *mut type_defs::SDL_Event) -> i32;
     fn rwfrom_file(&mut self, file: &str, mode: &str) -> *mut type_defs::SDL_RWops;
@@ -39,7 +38,6 @@ pub trait Window {
         flags: u32,
     ) -> *mut type_defs::SDL_Surface;
     fn show_cursor(&mut self, toggle: i32) -> i32;
-    fn unlock_audio(&mut self);
     fn warp_mouse(&mut self, x: u16, y: u16);
     fn wm_set_caption(&mut self, title: &str, icon: &str);
 }

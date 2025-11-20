@@ -201,9 +201,6 @@ impl Window for WaylandWindow {
     fn joystick_open(&mut self, index: i32) -> *mut type_defs::SDL_Joystick {
         unimplemented!("joystick_open");
     }
-    fn lock_audio(&mut self) {
-        unimplemented!("lock_audio");
-    }
     fn num_joysticks(&mut self) -> i32 {
         unimplemented!("num_joysticks");
     }
@@ -244,9 +241,6 @@ impl Window for WaylandWindow {
     }
     fn show_cursor(&mut self, toggle: i32) -> i32 {
         unimplemented!("show_cursor");
-    }
-    fn unlock_audio(&mut self) {
-        unimplemented!("unlock_audio");
     }
     fn warp_mouse(&mut self, x: u16, y: u16) {
         unimplemented!("warp_mouse");
