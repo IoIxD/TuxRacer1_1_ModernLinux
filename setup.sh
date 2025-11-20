@@ -49,7 +49,6 @@ DetectLIBC()
 }
 
 # Detect the Linux environment
-arch="x86"
 libc=`DetectLIBC`
 os=`uname -s`
 
@@ -65,9 +64,9 @@ try_run()
 
     # First find the binary we want to run
     failed=0
-    setup_bin="setup.data/bin/$os/$arch/$libc/$setup"
+    setup_bin="setup.data/bin/$os/x86/$libc/$setup"
     if [ ! -f "$setup_bin" ]; then
-        setup_bin="setup.data/bin/$os/$arch/$setup"
+        setup_bin="setup.data/bin/$os/x86/$setup"
     fi
     if [ "$failed" -eq 1 ]; then
         if [ "$fatal" != "" ]; then
@@ -121,7 +120,7 @@ if [ $status -ne 0 ]; then
         done
     fi
     try_run setup $* fatal || {
-        echo "The setup program seems to have failed on $arch/$libc"
+        echo "The setup program seems to have failed on  x86/$libc"
         status=1
     }
 else
