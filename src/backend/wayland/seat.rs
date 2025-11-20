@@ -1,6 +1,6 @@
 use wayland_client::{
     Connection, Dispatch, QueueHandle,
-    protocol::{wl_callback::WlCallback, wl_seat::WlSeat},
+    protocol::wl_seat::WlSeat,
 };
 
 use crate::backend::wayland::WaylandState;

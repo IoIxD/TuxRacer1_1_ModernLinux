@@ -1,10 +1,8 @@
-use std::os::raw::c_void;
 
 use wayland_client::{
-    Connection, Dispatch, Proxy, QueueHandle,
+    Connection, Dispatch, QueueHandle,
     protocol::wl_surface::{self, WlSurface},
 };
-use wayland_egl::WlEglSurface;
 
 use crate::backend::wayland::WaylandState;
 

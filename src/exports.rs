@@ -45,9 +45,7 @@ pub unsafe extern "C" fn SDL_GL_GetAttribute(
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_GL_GetProcAddress(proc_: *const c_char) -> *mut c_void {
-    window()
-        .lock()
-        .gl_get_proc_address(&CStr::from_ptr(proc_).to_string_lossy())
+    window().lock().gl_get_proc_address(proc_)
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_GL_SetAttribute(attr: type_defs::SDL_GLattr, value: c_int) -> c_int {

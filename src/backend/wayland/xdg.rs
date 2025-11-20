@@ -1,13 +1,15 @@
-use std::{os::raw::c_void, ptr::null_mut};
+use std::{ffi::CString, os::raw::c_void, ptr::null_mut};
 
-use khronos_egl::{Display, EGL1_5};
 use wayland_client::{Dispatch, Proxy};
 use wayland_egl::WlEglSurface;
 use wayland_protocols::xdg::shell::client::{
     xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel, xdg_wm_base::XdgWmBase,
 };
 
-use crate::backend::wayland::WaylandState;
+use crate::{
+    backend::wayland::WaylandState,
+    egl::{EGL, EGL_BLUE_SIZE, EGL_GREEN_SIZE, EGL_NONE, EGL_RED_SIZE},
+};
 use wayland_protocols::xdg::shell::client::xdg_surface::Event;
 
 impl Dispatch<XdgSurface, ()> for WaylandState {
@@ -20,81 +22,74 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
         qhandle: &wayland_client::QueueHandle<Self>,
     ) {
         match event {
-            Event::Configure { serial } => {
+            Event::Configure { serial } => unsafe {
                 let base_surface = state.base_surface.as_ref().unwrap();
 
                 let native_display = state.native_display.as_ref().unwrap();
 
-                let egl =
-                    unsafe { khronos_egl::DynamicInstance::<EGL1_5>::load_required() }.unwrap();
-
+                let egl = EGL::new();
                 println!("{}", native_display.id().interface().name);
 
                 pub const EGL_PLATFORM_WAYLAND_KHR: u32 = 0x31D8;
-                let display = unsafe {
-                    let eglGetPlatformDisplay: fn(
-                        khronos_egl::Enum,
-                        *mut c_void,
-                        *const khronos_egl::Attrib,
-                    ) -> khronos_egl::EGLDisplay =
-                        std::mem::transmute(egl.get_proc_address("eglGetPlatformDisplay").unwrap());
-
-                    let disp = eglGetPlatformDisplay(
+                let display = egl
+                    .get_platform_display(
                         EGL_PLATFORM_WAYLAND_KHR,
                         native_display.id().as_ptr() as *mut c_void,
                         null_mut(),
-                    );
-
-                    if disp.is_null() {
-                        panic!("eglGetPlatformDisplay returns null");
-                    }
-
-                    Display::from_ptr(disp)
-                };
+                    )
+                    .or(egl.get_platform_display_ext(
+                        EGL_PLATFORM_WAYLAND_KHR,
+                        native_display.id().as_ptr() as *mut c_void,
+                        null_mut(),
+                    ))
+                    .unwrap();
                 println!("got display");
 
-                egl.initialize(display).unwrap();
+                egl.initialize(display, null_mut(), null_mut()).unwrap();
 
-                egl.bind_api(khronos_egl::OPENGL_API)
-                    .expect("unable to select OpenGL API");
+                // egl.bind_api(EGL_OPENGL_API);
                 gl::load_with(|name| {
-                    egl.get_proc_address(name).unwrap() as *const std::ffi::c_void
+                    let cstr = CString::new(name).unwrap();
+                    match egl.get_proc_address(cstr.as_ptr()).unwrap() {
+                        Some(a) => a as *const c_void,
+                        None => null_mut(),
+                    }
                 });
 
                 let attributes = [
-                    khronos_egl::RED_SIZE,
+                    EGL_RED_SIZE,
                     8,
-                    khronos_egl::GREEN_SIZE,
+                    EGL_GREEN_SIZE,
                     8,
-                    khronos_egl::BLUE_SIZE,
+                    EGL_BLUE_SIZE,
                     8,
-                    khronos_egl::NONE,
+                    EGL_NONE,
                 ];
 
-                let config = egl
-                    .choose_first_config(display, &attributes)
+                /*let config = egl
+                    .choose_config(display, &attributes)
                     .unwrap()
                     .expect("unable to find an appropriate ELG configuration");
 
                 let context_attributes = [
-                    khronos_egl::CONTEXT_MAJOR_VERSION,
+                    CONTEXT_MAJOR_VERSION,
                     4,
-                    khronos_egl::CONTEXT_MINOR_VERSION,
+                    CONTEXT_MINOR_VERSION,
                     0,
-                    khronos_egl::CONTEXT_OPENGL_PROFILE_MASK,
-                    khronos_egl::CONTEXT_OPENGL_CORE_PROFILE_BIT,
-                    khronos_egl::NONE,
+                    CONTEXT_OPENGL_PROFILE_MASK,
+                    CONTEXT_OPENGL_CORE_PROFILE_BIT,
+                    NONE,
                 ];
 
                 egl.create_context(display, config, None, &context_attributes)
-                    .unwrap();
+                    .unwrap();*/
                 let egl_surface = WlEglSurface::new(base_surface.id(), 640, 480).unwrap();
                 state.egl_surface = Some(egl_surface);
                 state.egl = Some(egl);
                 state.display = Some(display);
 
                 state.configured = true;
-            }
+            },
             _ => todo!(),
         }
     }

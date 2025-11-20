@@ -16,7 +16,7 @@ pub trait Window {
     fn get_mouse_state(&mut self, x: *mut i32, y: *mut i32) -> u8;
     fn get_video_info(&mut self) -> *mut type_defs::SDL_VideoInfo;
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32;
-    fn gl_get_proc_address(&mut self, proc_: &str) -> *mut c_void;
+    fn gl_get_proc_address(&mut self, proc_: *const c_char) -> *mut c_void;
     fn gl_set_attribute(&mut self, attr: type_defs::SDL_GLattr, value: i32) -> i32;
     fn gl_swap_buffers(&mut self);
 

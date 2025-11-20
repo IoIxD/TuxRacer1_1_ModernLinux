@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 use std::{
-    ffi::{c_char, c_void},
+    ffi::{CStr, CString, c_char, c_void},
     ptr::null_mut,
 };
 
@@ -10,16 +10,15 @@ mod seat;
 mod surface;
 mod xdg;
 
-use khronos_egl::{Display, Dynamic, EGL1_5, Instance, Surface};
-use libloading::Library;
 use wayland_client::{
-    Connection, EventQueue, Proxy, QueueHandle,
+    Connection, EventQueue, QueueHandle,
     protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
 };
 use wayland_egl::WlEglSurface;
 
 use crate::{
     backend::Window,
+    egl::{EGL, EGLDisplay},
     type_defs::{self, SDL_Rect, SDL_Surface},
 };
 use wayland_protocols::xdg::shell::client::{
@@ -33,20 +32,14 @@ pub struct WaylandState {
     xdg_surface: Option<XdgSurface>,
     xdg_top_level: Option<XdgToplevel>,
     egl_surface: Option<WlEglSurface>,
-    egl: Option<Instance<Dynamic<Library, EGL1_5>>>,
-    display: Option<Display>,
+    egl: Option<EGL>,
+    display: Option<EGLDisplay>,
     configured: bool,
     native_display: Option<WlDisplay>,
 }
 
 impl WaylandState {
-    pub fn wait_for_egl(
-        &mut self,
-    ) -> (
-        &mut WlEglSurface,
-        &mut Instance<Dynamic<Library, EGL1_5>>,
-        &mut Display,
-    ) {
+    pub fn wait_for_egl(&mut self) -> (&mut WlEglSurface, &mut EGL, &mut EGLDisplay) {
         while !self.configured {}
 
         (
@@ -89,20 +82,15 @@ impl WaylandWindow {
 
             if let Some(guard) = event_queue.prepare_read() {
                 let read = guard.read().unwrap();
-                if read <= 0 {
-                    if state.configured {
-                        break;
-                    }
+                if read <= 0 && state.configured {
+                    break;
                 }
             }
 
             event_queue.dispatch_pending(&mut state).unwrap();
         }
 
-        Self {
-            state: state,
-            event_queue,
-        }
+        Self { state, event_queue }
     }
 }
 
@@ -125,7 +113,7 @@ impl WaylandState {
 impl Window for WaylandWindow {
     fn init(&mut self, _flags: u32) -> i32 {
         println!("init done");
-        return 0;
+        0
     }
     fn quit(&mut self) {}
 
@@ -169,12 +157,17 @@ impl Window for WaylandWindow {
         unsafe { gl::GetIntegerv(attr, &mut ret) };
         ret
     }
-    fn gl_get_proc_address(&mut self, proc_: &str) -> *mut c_void {
-        unimplemented!("gl_get_proc_address");
+    fn gl_get_proc_address(&mut self, proc: *const c_char) -> *mut c_void {
+        let (_, egl, display) = self.state.wait_for_egl();
+        unsafe {
+            egl.get_proc_address(proc)
+                .expect("eglGetProcAddress missing")
+                .expect("eglGetProcAddress missing") as *mut c_void
+        }
     }
     fn gl_set_attribute(&mut self, attr: type_defs::SDL_GLattr, value: i32) -> i32 {
         // todo?
-        return 0;
+        0
     }
     fn gl_swap_buffers(&mut self) {
         unimplemented!("gl_swap_buffers");
@@ -223,7 +216,7 @@ impl Window for WaylandWindow {
         // just resize for now
         // surface.resize(width, height, 0, 0);
 
-        return Box::leak(Box::new(SDL_Surface {
+        Box::leak(Box::new(SDL_Surface {
             flags,
             format: null_mut(), // todo
             w: width,
@@ -237,7 +230,7 @@ impl Window for WaylandWindow {
                 h: height,
             },
             refcount: 0,
-        }));
+        }))
     }
     fn show_cursor(&mut self, toggle: i32) -> i32 {
         unimplemented!("show_cursor");
