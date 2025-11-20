@@ -3,6 +3,8 @@
 # Product setup script - Loki Entertainment Software
 script=$0
 
+deps="libGLU.so.1 libGL.so.1 libSDL_mixer-1.2.so.0 libSDL-1.2.so.0 libpthread.so.0 libtcl.so.0 libpng.so.2 libSM.so.6 libICE.so.6 libX11.so.6 libXi.so.6 libXext.so.6 libXmu.so.6 libXt.so.6 libdl.so.2 libm.so.6 libc.so.6"
+
 count=0
 while [ -L "$script" ] ; do
     script=`perl -e "print readlink(\"$script\"), \"\n\""`
@@ -94,6 +96,13 @@ __EOF__
     return $failed
 }
 
+sdl1_2_mixer_found() {
+    echo ""
+    echo "URGENT: SDL1.2 Mixer found in $1."
+    echo "This is a bad thing, actually, as SDL1.2 Mixer does not work with our translation layer."
+    echo "Since SDL2 Mixer is API compatible, you should copy that into the game's directory under the name it expects"
+    echo ""
+}
 
 # Try to run the setup program
 status=0
@@ -115,5 +124,46 @@ if [ $status -ne 0 ]; then
         echo "The setup program seems to have failed on $arch/$libc"
         status=1
     }
+else
+    echo ""
+    echo ""
+    echo ""
+    any32bitgone=0
+    mixererr=0
+    for dep in $deps; do
+        is_mixer=0
+        if [ "$dep" == "libSDL_mixer-1.2.so.0" ]; then
+            is_mixer=1
+        fi
+        if [ -f /usr/lib32/$dep ]; then
+            if [ $is_mixer -eq 1 ]; then
+                sdl1_2_mixer_found "/usr/lib32"
+            fi
+        else
+            any32bitgone=1
+            echo -n "WARNING: $dep not found in /usr/lib32/. "
+            if [ $is_mixer -eq 1 ]; then
+                echo -n "Note that for SDL_mixer, you actually should install SDL2_Mixer (which is API compatible) and copy it into the game's directory."
+                mixererr=1
+            fi
+            echo ""
+        fi
+    done
+    if [ $any32bitgone -eq 1 ]; then
+        echo "The game may fail to launch if there's missing dependencies, though some of these may also be present on the disc and work fine."
+        echo "If not, make sure you installed them, and make sure you have the 32-bit version."
+        echo ""
+    fi
+    echo "Next instructions:"
+    echo "- Replace the game's libSDL-1.2.so.0 with our own (target/i686-unknown-linux-gnu/___/libSDL_1_2.so if you compiled yourself)"
+    if [ $mixererr -eq 1 ]; then
+        echo "- Replace the game's SDL1.2-mixer with a copy of SDL2 mixer (which is API compatible but actually works on modern systems)"
+    fi
+    if [ $status -eq 127 ]; then
+        echo "- Remember to look into how you can execute i686 binaries on your system."
+    fi
+    echo ""
+    echo ""
+    echo ""
 fi
 exit $status
