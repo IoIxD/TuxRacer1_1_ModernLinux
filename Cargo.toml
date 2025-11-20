@@ -1,0 +1,17 @@
+[package]
+name = "SDL-1_2"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gl = "0.14.0"
+khronos-egl = { version = "6.0.0", features = ["dynamic"] }
+lazy_static = "1.5.0"
+libloading = "0.8.0"
+parking_lot = "0.12.5"
+wayland-client = "0.31.11"
+wayland-egl = "0.32.8"
+wayland-protocols = { version = "0.32.9", features = ["client", "wayland-client"] }
+
+[lib]
+crate-type =["cdylib"]
