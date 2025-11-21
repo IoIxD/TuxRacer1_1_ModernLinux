@@ -1,25 +1,26 @@
 #![allow(unused_variables)]
 use std::{
-    ffi::{CStr, CString, c_char, c_void},
+    ffi::{c_char, c_void},
     ptr::null_mut,
 };
 
-mod compositor;
 mod registry;
 mod seat;
-mod surface;
 mod xdg;
 
 use gl::COLOR_BUFFER_BIT;
 use wayland_client::{
-    Connection, EventQueue, QueueHandle,
-    protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
+    Connection, EventQueue, QueueHandle, delegate_noop,
+    protocol::{
+        wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_display::WlDisplay, wl_shm::WlShm,
+        wl_shm_pool::WlShmPool, wl_surface::WlSurface,
+    },
 };
 use wayland_egl::WlEglSurface;
 
 use crate::{
     backend::Window,
-    egl::{EGL, EGLDisplay, EGLSurface},
+    egl::{EGL, EGL_SUCCESS, EGL_TRUE, EGLBoolean, EGLDisplay, EGLSurface, wl_buffer},
     type_defs::{self, SDL_Rect, SDL_Surface},
 };
 use wayland_protocols::xdg::shell::client::{
@@ -37,6 +38,7 @@ pub struct WaylandState {
     display: EGLDisplay,
     configured: bool,
     native_display: Option<WlDisplay>,
+    buffer: Option<WlBuffer>,
 }
 
 impl WaylandState {
@@ -58,6 +60,7 @@ pub struct WaylandWindow {
 
 impl WaylandWindow {
     pub fn new() -> Self {
+        // upper_sanity_test();
         let conn = Connection::connect_to_env().unwrap();
 
         let mut event_queue = conn.new_event_queue();
@@ -73,25 +76,48 @@ impl WaylandWindow {
         };
         event_queue.roundtrip(&mut state).unwrap();
 
-        while !state.configured {
-            let dispatched = event_queue.dispatch_pending(&mut state).unwrap();
-            if dispatched > 0 {
-                break;
-            }
+        Self { state, event_queue }
+    }
 
-            event_queue.flush().unwrap();
-
-            if let Some(guard) = event_queue.prepare_read() {
-                let read = guard.read().unwrap();
-                if read <= 0 && state.configured {
-                    break;
-                }
-            }
-
-            event_queue.dispatch_pending(&mut state).unwrap();
+    pub fn event_loop(&mut self) {
+        let dispatched = self.event_queue.dispatch_pending(&mut self.state).unwrap();
+        if dispatched > 0 {
+            return;
         }
 
-        Self { state, event_queue }
+        self.event_queue.flush().unwrap();
+
+        if let Some(guard) = self.event_queue.prepare_read() {
+            let read = guard.read().unwrap();
+            if read <= 0 {
+                return;
+            }
+            println!("{}", read);
+        }
+
+        self.event_queue.dispatch_pending(&mut self.state).unwrap();
+    }
+
+    fn sanity_test(&mut self) {
+        loop {
+            unsafe {
+                gl::ClearColor(1.0, 0.0, 0.0, 1.0);
+                gl::Clear(COLOR_BUFFER_BIT);
+                gl::Flush();
+
+                self.state
+                    .egl
+                    .as_mut()
+                    .unwrap()
+                    .swap_buffers(
+                        self.state.display,
+                        self.state.egl_surface.as_mut().unwrap().ptr() as EGLSurface,
+                    )
+                    .unwrap();
+                self.state.base_surface.as_mut().unwrap().commit();
+            };
+            self.event_loop();
+        }
     }
 }
 
@@ -109,32 +135,23 @@ impl WaylandState {
         self.xdg_surface = Some(xdg_surface);
         self.xdg_top_level = Some(toplevel);
     }
-}
 
-impl WaylandWindow {
-    fn sanity_test(&mut self) {
-        unsafe {
-            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
-            gl::Clear(COLOR_BUFFER_BIT);
-            gl::Flush();
-
-            self.state
-                .egl
-                .as_mut()
-                .unwrap()
-                .swap_buffers(
-                    self.state.display,
-                    self.state.egl_surface.as_mut().unwrap().ptr() as EGLSurface,
-                )
-                .unwrap();
-        };
-
-        loop {}
+    pub unsafe fn panic_on_error(&self, reason: &str, err: EGLBoolean) {
+        if err != EGL_TRUE {
+            panic!(
+                "{}: {}",
+                reason,
+                self.egl.as_ref().unwrap().get_error_str().unwrap()
+            );
+        }
     }
 }
 
 impl Window for WaylandWindow {
     fn init(&mut self, _flags: u32) -> i32 {
+        while !self.state.configured {
+            self.event_loop();
+        }
         println!("init done");
 
         0
@@ -267,3 +284,10 @@ impl Window for WaylandWindow {
         unimplemented!("wm_set_caption");
     }
 }
+delegate_noop!(WaylandState: ignore WlCompositor);
+delegate_noop!(WaylandState: ignore WlShm);
+delegate_noop!(WaylandState: ignore WlBuffer);
+delegate_noop!(WaylandState: ignore WlShmPool);
+
+// for now
+delegate_noop!(WaylandState: ignore WlSurface);

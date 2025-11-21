@@ -668,6 +668,28 @@ impl EGL {
             value: *mut EGLint,
         ) -> EGLBoolean,
     );
+    gen_func!(get_error, () -> EGLint);
+
+    pub unsafe fn get_error_str(&self) -> Result<&str, EGLError> {
+        match self.get_error()? as u32 {
+            EGL_SUCCESS => return Ok("No error"),
+            EGL_NOT_INITIALIZED => return Ok("EGL not initialized or failed to initialize"),
+            EGL_BAD_ACCESS => return Ok("Resource inaccessible"),
+            EGL_BAD_ALLOC => return Ok("Cannot allocate resources"),
+            EGL_BAD_ATTRIBUTE => return Ok("Unrecognized attribute or attribute value"),
+            EGL_BAD_CONTEXT => return Ok("Invalid EGL context"),
+            EGL_BAD_CONFIG => return Ok("Invalid EGL frame buffer configuration"),
+            EGL_BAD_CURRENT_SURFACE => return Ok("Current surface is no longer valid"),
+            EGL_BAD_DISPLAY => return Ok("Invalid EGL display"),
+            EGL_BAD_SURFACE => return Ok("Invalid surface"),
+            EGL_BAD_MATCH => return Ok("Inconsistent arguments"),
+            EGL_BAD_PARAMETER => return Ok("Invalid argument"),
+            EGL_BAD_NATIVE_PIXMAP => return Ok("Invalid native pixmap"),
+            EGL_BAD_NATIVE_WINDOW => return Ok("Invalid native window"),
+            EGL_CONTEXT_LOST => return Ok("Context lost"),
+            _ => return Ok("Unknown"),
+        }
+    }
 
     /*gen_func!(create_wayland_buffer_from_image_wl, (dpy: EGLDisplay, image: EGLImageKHR) -> *mut wl_buffer,
     );*/
@@ -1020,9 +1042,5 @@ impl EGLSymbolTable {
             unbind_wayland_display_wl: func_load!(get_proc_address, c"eglUnbindWaylandDisplayWL"),
             query_wayland_buffer_wl: func_load!(get_proc_address, c"eglQueryWaylandBufferWL"),
         }
-    }
-
-    fn destroy_surface(&self) -> &crate::egl::ffi::PFNEGLDESTROYSURFACEPROC {
-        &self.destroy_surface
     }
 }
