@@ -163,9 +163,8 @@ impl Window for WaylandWindow {
         unimplemented!("get_video_info");
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
-        self.sanity_test();
-
         let (surface, egl, display) = self.state.wait_for_egl();
+        self.sanity_test();
 
         let attr = match attr {
             type_defs::SDL_GLattr::RED_SIZE => gl::RENDERBUFFER_RED_SIZE,

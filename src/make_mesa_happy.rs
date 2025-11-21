@@ -1,5 +1,9 @@
 // Dude I spent a day and a half trying to debug this and I found out that the Mesa libraries were tranparently failing to load because of "missing zlib functions" for a version of it from 2005. I am going to cry.
 
+#![allow(dead_code)]
+#![allow(non_snake_case)]
+#![allow(unused_variables)]
+
 // pub type off_t = ::std::os::raw::c_long;
 // pub const ZLIB_VERSION: &[u8; 8] = b"1.2.2.3\0";
 // pub const ZLIB_VERNUM: u32 = 4643;

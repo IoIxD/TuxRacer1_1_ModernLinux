@@ -7,9 +7,9 @@
 mod ffi;
 pub use ffi::*;
 
-use std::{error::Error, ffi::c_void, fmt::Display, os::raw::c_char, time::SystemTime};
+use std::{error::Error, ffi::c_void, fmt::Display, os::raw::c_char};
 
-use libloading::os::unix::{Library, RTLD_GLOBAL, RTLD_NOW, Symbol};
+use libloading::os::unix::{Library, Symbol};
 
 use crate::egl::ffi::PFNEGLGETPROCADDRESSPROC;
 
@@ -27,12 +27,15 @@ impl Display for EGLError {
 impl Error for EGLError {}
 
 pub struct EGL {
-    // lib: Library,
+    lib: Library,
+    proc_address: Symbol<PFNEGLGETPROCADDRESSPROC>,
     sym_table: EGLSymbolTable,
 }
 
-unsafe fn load_library(path: &str) -> Result<Library, libloading::Error> {
-    Library::open(Some(path), RTLD_NOW | RTLD_GLOBAL | 0x00008)
+unsafe fn load_library(path: &str) -> Option<Library> {
+    // On Linux, load library with `RTLD_NOW | RTLD_NODELETE` to fix a SIGSEGV
+    // See https://github.com/timothee-haudebourg/khronos-egl/issues/14 for more details.
+    Library::open(Some(path), 0x2 | 0x1000).ok()
 }
 
 macro_rules! gen_func {
@@ -56,13 +59,21 @@ macro_rules! gen_func {
 
 impl EGL {
     pub unsafe fn new() -> Self {
-        // let lib = load_library("libEGL.so.1")
-        //     .or(load_library("libEGL.so"))
-        //     .expect("EGL not found");
+        let lib = load_library("libEGL.so.1")
+            .or(load_library("libEGL.so"))
+            .expect("EGL not found");
 
-        let sym_table = EGLSymbolTable::new();
+        let proc_address = lib
+            .get::<PFNEGLGETPROCADDRESSPROC>(b"eglGetProcAddress")
+            .unwrap();
 
-        Self { sym_table }
+        let sym_table = EGLSymbolTable::new(&lib);
+
+        Self {
+            lib,
+            proc_address,
+            sym_table,
+        }
     }
     gen_func!(choose_config, (
             dpy: EGLDisplay,
@@ -804,10 +815,11 @@ unsafe extern "C" {
 }
 
 impl EGLSymbolTable {
-    pub unsafe fn new() -> Self {
-        let get_proc_address = eglGetProcAddress;
-
-        let a: *mut c_void = func_load!(get_proc_address, c"eglChooseConfig");
+    pub unsafe fn new(lib: &Library) -> Self {
+        let get_proc_address = (*lib
+            .get::<PFNEGLGETPROCADDRESSPROC>(b"eglGetProcAddress")
+            .unwrap())
+        .unwrap();
 
         Self {
             choose_config: func_load!(get_proc_address, c"eglChooseConfig"),
