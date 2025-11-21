@@ -4,9 +4,12 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 
-use std::ffi::{CStr, c_char, c_int, c_void};
+use std::{
+    ffi::{CStr, c_char, c_int, c_void},
+    process::exit,
+};
 
-use crate::{type_defs, window::window};
+use crate::{sigsegv_handler, type_defs, window};
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_Delay(ms: u32) {
@@ -57,6 +60,12 @@ pub unsafe extern "C" fn SDL_GL_SwapBuffers() {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_Init(flags: u32) -> c_int {
+    // take this opprutunity to override the sigsegv handler
+    unsafe {
+        let f = sigsegv_handler as *const fn(libc::c_int);
+        libc::signal(libc::SIGSEGV, f as libc::size_t);
+    }
+
     window().lock().init(flags)
 }
 #[unsafe(no_mangle)]

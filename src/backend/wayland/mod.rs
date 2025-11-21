@@ -63,7 +63,6 @@ pub struct WaylandWindow {
 
 impl WaylandWindow {
     pub fn new() -> Self {
-        // upper_sanity_test();
         let conn = Connection::connect_to_env().unwrap();
 
         let mut event_queue = conn.new_event_queue();
@@ -190,7 +189,7 @@ impl Window for WaylandWindow {
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
         let (surface, egl, display) = self.state.wait_for_egl();
-        self.sanity_test();
+        // self.sanity_test();
 
         let attr = match attr {
             type_defs::SDL_GLattr::RED_SIZE => gl::RENDERBUFFER_RED_SIZE,
@@ -211,9 +210,13 @@ impl Window for WaylandWindow {
     fn gl_get_proc_address(&mut self, proc: *const c_char) -> *mut c_void {
         let (_, egl, display) = self.state.wait_for_egl();
         unsafe {
-            egl.get_proc_address(proc)
+            match egl
+                .get_proc_address(proc)
                 .expect("eglGetProcAddress missing")
-                .expect("eglGetProcAddress missing") as *mut c_void
+            {
+                Some(a) => a as *mut c_void,
+                None => null_mut(),
+            }
         }
     }
     fn gl_set_attribute(&mut self, attr: type_defs::SDL_GLattr, value: i32) -> i32 {

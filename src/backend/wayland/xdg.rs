@@ -13,8 +13,7 @@ use crate::{
     egl::{
         EGL, EGL_BLUE_SIZE, EGL_CONTEXT_MAJOR_VERSION, EGL_CONTEXT_MINOR_VERSION,
         EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT, EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_GREEN_SIZE,
-        EGL_NONE, EGL_RED_SIZE, EGL_TRUE, EGLConfig, EGLDisplay, EGLNativeWindowType, EGLSurface,
-        EGLint,
+        EGL_NONE, EGL_RED_SIZE, EGLConfig, EGLDisplay, EGLNativeWindowType, EGLSurface, EGLint,
     },
 };
 use std::mem::MaybeUninit;
@@ -31,13 +30,17 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
         match event {
             xdg_surface::Event::Configure { serial } => unsafe {
                 xdg_surface.ack_configure(serial);
+
+                if state.configured {
+                    return;
+                }
+
                 let base_surface = state.base_surface.as_ref().unwrap();
 
                 let native_display = state.native_display.as_ref().unwrap();
 
                 state.egl = Some(EGL::new());
                 let egl = state.egl.as_ref().unwrap();
-                println!("{}", native_display.id().interface().name);
 
                 pub const EGL_PLATFORM_WAYLAND_KHR: u32 = 0x31D8;
                 let display = egl
@@ -60,8 +63,6 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     "Error on initialization",
                     egl.initialize(display, null_mut(), null_mut()).unwrap(),
                 );
-
-                // egl.bind_api(EGL_OPENGL_API);
 
                 let attributes: [i32; _] = [
                     EGL_RED_SIZE as i32,
