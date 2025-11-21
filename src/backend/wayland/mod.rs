@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 use std::{
     ffi::{c_char, c_void},
+    io::ErrorKind,
     ptr::null_mut,
 };
 
@@ -10,7 +11,9 @@ mod xdg;
 
 use gl::COLOR_BUFFER_BIT;
 use wayland_client::{
-    Connection, EventQueue, QueueHandle, delegate_noop,
+    Connection, EventQueue, QueueHandle,
+    backend::WaylandError,
+    delegate_noop,
     protocol::{
         wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_display::WlDisplay, wl_shm::WlShm,
         wl_shm_pool::WlShmPool, wl_surface::WlSurface,
@@ -85,7 +88,13 @@ impl WaylandWindow {
             return;
         }
 
-        self.event_queue.flush().unwrap();
+        while let Err(err) = self.event_queue.flush() {
+            if let WaylandError::Io(err) = err {
+                if err.kind() == ErrorKind::WouldBlock {}
+            } else {
+                println!("{}", err);
+            }
+        }
 
         if let Some(guard) = self.event_queue.prepare_read() {
             let read = guard.read().unwrap();

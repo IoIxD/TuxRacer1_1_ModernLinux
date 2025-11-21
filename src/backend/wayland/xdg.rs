@@ -117,6 +117,7 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     .unwrap();
 
                 let egl_surface = WlEglSurface::new(base_surface.id(), 640, 480).unwrap();
+
                 let surface = egl_surface.ptr() as EGLSurface;
                 egl.make_current(display, surface, surface, ctx).unwrap();
 
@@ -128,6 +129,7 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     }
                 });
 
+                base_surface.attach(state.buffer.as_ref(), 0, 0);
                 base_surface.commit();
 
                 state.egl_surface = Some(egl_surface);
