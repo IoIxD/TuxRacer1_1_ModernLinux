@@ -10,6 +10,7 @@ mod seat;
 mod surface;
 mod xdg;
 
+use gl::COLOR_BUFFER_BIT;
 use wayland_client::{
     Connection, EventQueue, QueueHandle,
     protocol::{wl_display::WlDisplay, wl_surface::WlSurface},
@@ -18,7 +19,7 @@ use wayland_egl::WlEglSurface;
 
 use crate::{
     backend::Window,
-    egl::{EGL, EGLDisplay},
+    egl::{EGL, EGLDisplay, EGLSurface},
     type_defs::{self, SDL_Rect, SDL_Surface},
 };
 use wayland_protocols::xdg::shell::client::{
@@ -33,7 +34,7 @@ pub struct WaylandState {
     xdg_top_level: Option<XdgToplevel>,
     egl_surface: Option<WlEglSurface>,
     egl: Option<EGL>,
-    display: Option<EGLDisplay>,
+    display: EGLDisplay,
     configured: bool,
     native_display: Option<WlDisplay>,
 }
@@ -45,7 +46,7 @@ impl WaylandState {
         (
             unsafe { self.egl_surface.as_mut().unwrap_unchecked() },
             unsafe { self.egl.as_mut().unwrap_unchecked() },
-            unsafe { self.display.as_mut().unwrap_unchecked() },
+            &mut self.display,
         )
     }
 }
@@ -110,9 +111,32 @@ impl WaylandState {
     }
 }
 
+impl WaylandWindow {
+    fn sanity_test(&mut self) {
+        unsafe {
+            gl::ClearColor(1.0, 0.0, 0.0, 1.0);
+            gl::Clear(COLOR_BUFFER_BIT);
+            gl::Flush();
+
+            self.state
+                .egl
+                .as_mut()
+                .unwrap()
+                .swap_buffers(
+                    self.state.display,
+                    self.state.egl_surface.as_mut().unwrap().ptr() as EGLSurface,
+                )
+                .unwrap();
+        };
+
+        loop {}
+    }
+}
+
 impl Window for WaylandWindow {
     fn init(&mut self, _flags: u32) -> i32 {
         println!("init done");
+
         0
     }
     fn quit(&mut self) {}
@@ -139,6 +163,8 @@ impl Window for WaylandWindow {
         unimplemented!("get_video_info");
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
+        self.sanity_test();
+
         let (surface, egl, display) = self.state.wait_for_egl();
 
         let attr = match attr {

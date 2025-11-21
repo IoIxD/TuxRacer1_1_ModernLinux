@@ -7,9 +7,9 @@
 mod ffi;
 pub use ffi::*;
 
-use std::{error::Error, ffi::c_void, fmt::Display, os::raw::c_char};
+use std::{error::Error, ffi::c_void, fmt::Display, os::raw::c_char, time::SystemTime};
 
-use libloading::os::unix::{Library, Symbol};
+use libloading::os::unix::{Library, RTLD_GLOBAL, RTLD_NOW, Symbol};
 
 use crate::egl::ffi::PFNEGLGETPROCADDRESSPROC;
 
@@ -27,15 +27,12 @@ impl Display for EGLError {
 impl Error for EGLError {}
 
 pub struct EGL {
-    lib: Library,
-    proc_address: Symbol<PFNEGLGETPROCADDRESSPROC>,
+    // lib: Library,
     sym_table: EGLSymbolTable,
 }
 
-unsafe fn load_library(path: &str) -> Option<Library> {
-    // On Linux, load library with `RTLD_NOW | RTLD_NODELETE` to fix a SIGSEGV
-    // See https://github.com/timothee-haudebourg/khronos-egl/issues/14 for more details.
-    Library::open(Some(path), 0x2 | 0x1000).ok()
+unsafe fn load_library(path: &str) -> Result<Library, libloading::Error> {
+    Library::open(Some(path), RTLD_NOW | RTLD_GLOBAL | 0x00008)
 }
 
 macro_rules! gen_func {
@@ -59,21 +56,13 @@ macro_rules! gen_func {
 
 impl EGL {
     pub unsafe fn new() -> Self {
-        let lib = load_library("libEGL.so.1")
-            .or(load_library("libEGL.so"))
-            .expect("EGL not found");
+        // let lib = load_library("libEGL.so.1")
+        //     .or(load_library("libEGL.so"))
+        //     .expect("EGL not found");
 
-        let proc_address = lib
-            .get::<PFNEGLGETPROCADDRESSPROC>(b"eglGetProcAddress")
-            .unwrap();
+        let sym_table = EGLSymbolTable::new();
 
-        let sym_table = EGLSymbolTable::new(&lib);
-
-        Self {
-            lib,
-            proc_address,
-            sym_table,
-        }
+        Self { sym_table }
     }
     gen_func!(choose_config, (
             dpy: EGLDisplay,
@@ -799,446 +788,225 @@ struct EGLSymbolTable {
     query_wayland_buffer_wl: crate::egl::ffi::PFNEGLQUERYWAYLANDBUFFERWLPROC,
 }
 
+macro_rules! func_load {
+    ($get_proc_address:ident, $name:literal) => {{
+        // println!("EGL {:?}", $name);
+        // let time = SystemTime::now();
+        // while time.elapsed().unwrap().as_secs() <= 1 {}
+        std::mem::transmute(($get_proc_address)($name.as_ptr()))
+    }};
+}
+
+unsafe extern "C" {
+    fn eglGetProcAddress(
+        procname: *const ::std::os::raw::c_char,
+    ) -> __eglMustCastToProperFunctionPointerType;
+}
+
 impl EGLSymbolTable {
-    pub unsafe fn new(lib: &Library) -> Self {
+    pub unsafe fn new() -> Self {
+        let get_proc_address = eglGetProcAddress;
+
+        let a: *mut c_void = func_load!(get_proc_address, c"eglChooseConfig");
+
         Self {
-            choose_config: lib
-                .get::<crate::egl::ffi::PFNEGLCHOOSECONFIGPROC>(b"eglChooseConfig")
-                .map_or_else(|_| None, |a| *a),
-            copy_buffers: lib
-                .get::<crate::egl::ffi::PFNEGLCOPYBUFFERSPROC>(b"eglCopyBuffers")
-                .map_or_else(|_| None, |a| *a),
-            create_context: lib
-                .get::<crate::egl::ffi::PFNEGLCREATECONTEXTPROC>(b"eglCreateContext")
-                .map_or_else(|_| None, |a| *a),
-            create_pbuffer_surface: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPBUFFERSURFACEPROC>(b"eglCreatePbufferSurface")
-                .map_or_else(|_| None, |a| *a),
-            create_pixmap_surface: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPIXMAPSURFACEPROC>(b"eglCreatePixmapSurface")
-                .map_or_else(|_| None, |a| *a),
-            create_window_surface: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEWINDOWSURFACEPROC>(b"eglCreateWindowSurface")
-                .map_or_else(|_| None, |a| *a),
-            destroy_context: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYCONTEXTPROC>(b"eglDestroyContext")
-                .map_or_else(|_| None, |a| *a),
-            destroy_surface: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYSURFACEPROC>(b"eglDestroySurface")
-                .map_or_else(|_| None, |a| *a),
-            get_config_attrib: lib
-                .get::<crate::egl::ffi::PFNEGLGETCONFIGATTRIBPROC>(b"eglGetConfigAttrib")
-                .map_or_else(|_| None, |a| *a),
-            get_configs: lib
-                .get::<crate::egl::ffi::PFNEGLGETCONFIGSPROC>(b"eglGetConfigs")
-                .map_or_else(|_| None, |a| *a),
-            get_current_display: lib
-                .get::<crate::egl::ffi::PFNEGLGETCURRENTDISPLAYPROC>(b"eglGetCurrentDisplay")
-                .map_or_else(|_| None, |a| *a),
-            get_current_surface: lib
-                .get::<crate::egl::ffi::PFNEGLGETCURRENTSURFACEPROC>(b"eglGetCurrentSurface")
-                .map_or_else(|_| None, |a| *a),
-            get_display: lib
-                .get::<crate::egl::ffi::PFNEGLGETDISPLAYPROC>(b"eglGetDisplay")
-                .map_or_else(|_| None, |a| *a),
-            get_error: lib
-                .get::<crate::egl::ffi::PFNEGLGETERRORPROC>(b"eglGetError")
-                .map_or_else(|_| None, |a| *a),
-            get_proc_address: lib
-                .get::<crate::egl::ffi::PFNEGLGETPROCADDRESSPROC>(b"eglGetProcAddress")
-                .map_or_else(|_| None, |a| *a),
-            initialize: lib
-                .get::<crate::egl::ffi::PFNEGLINITIALIZEPROC>(b"eglInitialize")
-                .map_or_else(|_| None, |a| *a),
-            make_current: lib
-                .get::<crate::egl::ffi::PFNEGLMAKECURRENTPROC>(b"eglMakeCurrent")
-                .map_or_else(|_| None, |a| *a),
-            query_context: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYCONTEXTPROC>(b"eglQueryContext")
-                .map_or_else(|_| None, |a| *a),
-            query_string: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYSTRINGPROC>(b"eglQueryString")
-                .map_or_else(|_| None, |a| *a),
-            query_surface: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYSURFACEPROC>(b"eglQuerySurface")
-                .map_or_else(|_| None, |a| *a),
-            swap_buffers: lib
-                .get::<crate::egl::ffi::PFNEGLSWAPBUFFERSPROC>(b"eglSwapBuffers")
-                .map_or_else(|_| None, |a| *a),
-            terminate: lib
-                .get::<crate::egl::ffi::PFNEGLTERMINATEPROC>(b"eglTerminate")
-                .map_or_else(|_| None, |a| *a),
-            wait_gl: lib
-                .get::<crate::egl::ffi::PFNEGLWAITGLPROC>(b"eglWaitGL")
-                .map_or_else(|_| None, |a| *a),
-            wait_native: lib
-                .get::<crate::egl::ffi::PFNEGLWAITNATIVEPROC>(b"eglWaitNative")
-                .map_or_else(|_| None, |a| *a),
-            bind_tex_image: lib
-                .get::<crate::egl::ffi::PFNEGLBINDTEXIMAGEPROC>(b"eglBindTexImage")
-                .map_or_else(|_| None, |a| *a),
-            release_tex_image: lib
-                .get::<crate::egl::ffi::PFNEGLRELEASETEXIMAGEPROC>(b"eglReleaseTexImage")
-                .map_or_else(|_| None, |a| *a),
-            surface_attrib: lib
-                .get::<crate::egl::ffi::PFNEGLSURFACEATTRIBPROC>(b"eglSurfaceAttrib")
-                .map_or_else(|_| None, |a| *a),
-            swap_interval: lib
-                .get::<crate::egl::ffi::PFNEGLSWAPINTERVALPROC>(b"eglSwapInterval")
-                .map_or_else(|_| None, |a| *a),
-            bind_api: lib
-                .get::<crate::egl::ffi::PFNEGLBINDAPIPROC>(b"eglBindAPI")
-                .map_or_else(|_| None, |a| *a),
-            query_api: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYAPIPROC>(b"eglQueryAPI")
-                .map_or_else(|_| None, |a| *a),
-            create_pbuffer_from_client_buffer: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPBUFFERFROMCLIENTBUFFERPROC>(
-                    b"eglCreatePbufferFromClientBuffer",
-                )
-                .map_or_else(|_| None, |a| *a),
-            release_thread: lib
-                .get::<crate::egl::ffi::PFNEGLRELEASETHREADPROC>(b"eglReleaseThread")
-                .map_or_else(|_| None, |a| *a),
-            wait_client: lib
-                .get::<crate::egl::ffi::PFNEGLWAITCLIENTPROC>(b"eglWaitClient")
-                .map_or_else(|_| None, |a| *a),
-            get_current_context: lib
-                .get::<crate::egl::ffi::PFNEGLGETCURRENTCONTEXTPROC>(b"eglGetCurrentContext")
-                .map_or_else(|_| None, |a| *a),
-            create_sync: lib
-                .get::<crate::egl::ffi::PFNEGLCREATESYNCPROC>(b"eglCreateSync")
-                .map_or_else(|_| None, |a| *a),
-            destroy_sync: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYSYNCPROC>(b"eglDestroySync")
-                .map_or_else(|_| None, |a| *a),
-            client_wait_sync: lib
-                .get::<crate::egl::ffi::PFNEGLCLIENTWAITSYNCPROC>(b"eglClientWaitSync")
-                .map_or_else(|_| None, |a| *a),
-            get_sync_attrib: lib
-                .get::<crate::egl::ffi::PFNEGLGETSYNCATTRIBPROC>(b"eglGetSyncAttrib")
-                .map_or_else(|_| None, |a| *a),
-            create_image: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEIMAGEPROC>(b"eglCreateImage")
-                .map_or_else(|_| None, |a| *a),
-            destroy_image: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYIMAGEPROC>(b"eglDestroyImage")
-                .map_or_else(|_| None, |a| *a),
-            get_platform_display: lib
-                .get::<crate::egl::ffi::PFNEGLGETPLATFORMDISPLAYPROC>(b"eglGetPlatformDisplay")
-                .map_or_else(|_| None, |a| *a),
-            create_platform_window_surface: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPLATFORMWINDOWSURFACEPROC>(
-                    b"eglCreatePlatformWindowSurface",
-                )
-                .map_or_else(|_| None, |a| *a),
-            create_platform_pixmap_surface: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPLATFORMPIXMAPSURFACEPROC>(
-                    b"eglCreatePlatformPixmapSurface",
-                )
-                .map_or_else(|_| None, |a| *a),
-            wait_sync: lib
-                .get::<crate::egl::ffi::PFNEGLWAITSYNCPROC>(b"eglWaitSync")
-                .map_or_else(|_| None, |a| *a),
-            debug_message_control_khr: lib
-                .get::<crate::egl::ffi::PFNEGLDEBUGMESSAGECONTROLKHRPROC>(
-                    b"eglDebugMessageControlKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_debug_khr: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDEBUGKHRPROC>(b"eglQueryDebugKHR")
-                .map_or_else(|_| None, |a| *a),
-            label_object_khr: lib
-                .get::<crate::egl::ffi::PFNEGLLABELOBJECTKHRPROC>(b"eglLabelObjectKHR")
-                .map_or_else(|_| None, |a| *a),
-            query_display_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDISPLAYATTRIBKHRPROC>(
-                    b"eglQueryDisplayAttribKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            create_sync_khr: lib
-                .get::<crate::egl::ffi::PFNEGLCREATESYNCKHRPROC>(b"eglCreateSyncKHR")
-                .map_or_else(|_| None, |a| *a),
-            destroy_sync_khr: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYSYNCKHRPROC>(b"eglDestroySyncKHR")
-                .map_or_else(|_| None, |a| *a),
-            client_wait_sync_khr: lib
-                .get::<crate::egl::ffi::PFNEGLCLIENTWAITSYNCKHRPROC>(b"eglClientWaitSyncKHR")
-                .map_or_else(|_| None, |a| *a),
-            get_sync_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLGETSYNCATTRIBKHRPROC>(b"eglGetSyncAttribKHR")
-                .map_or_else(|_| None, |a| *a),
-            create_image_khr: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEIMAGEKHRPROC>(b"eglCreateImageKHR")
-                .map_or_else(|_| None, |a| *a),
-            destroy_image_khr: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYIMAGEKHRPROC>(b"eglDestroyImageKHR")
-                .map_or_else(|_| None, |a| *a),
-            lock_surface_khr: lib
-                .get::<crate::egl::ffi::PFNEGLLOCKSURFACEKHRPROC>(b"eglLockSurfaceKHR")
-                .map_or_else(|_| None, |a| *a),
-            unlock_surface_khr: lib
-                .get::<crate::egl::ffi::PFNEGLUNLOCKSURFACEKHRPROC>(b"eglUnlockSurfaceKHR")
-                .map_or_else(|_| None, |a| *a),
-            set_damageregionkhr: lib
-                .get::<crate::egl::ffi::PFNEGLSETDAMAGEREGIONKHRPROC>(b"eglSetDAMAGEREGIONKHR")
-                .map_or_else(|_| None, |a| *a),
-            signal_sync_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSIGNALSYNCKHRPROC>(b"eglSignalSyncKHR")
-                .map_or_else(|_| None, |a| *a),
-            create_stream_khr: lib
-                .get::<crate::egl::ffi::PFNEGLCREATESTREAMKHRPROC>(b"eglCreateStreamKHR")
-                .map_or_else(|_| None, |a| *a),
-            destroy_stream_khr: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYSTREAMKHRPROC>(b"eglDestroyStreamKHR")
-                .map_or_else(|_| None, |a| *a),
-            stream_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSTREAMATTRIBKHRPROC>(b"eglStreamAttribKHR")
-                .map_or_else(|_| None, |a| *a),
-            query_stream_khr: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYSTREAMKHRPROC>(b"eglQueryStreamKHR")
-                .map_or_else(|_| None, |a| *a),
-            create_stream_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLCREATESTREAMATTRIBKHRPROC>(
-                    b"eglCreateStreamAttribKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            set_stream_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSETSTREAMATTRIBKHRPROC>(b"eglSetStreamAttribKHR")
-                .map_or_else(|_| None, |a| *a),
-            query_stream_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYSTREAMATTRIBKHRPROC>(b"eglQueryStreamAttribKHR")
-                .map_or_else(|_| None, |a| *a),
-            stream_consumer_accquire_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSTREAMCONSUMERACQUIREATTRIBKHRPROC>(
-                    b"eglStreamConsumerAccquireAttribKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            stream_consumer_release_attrib_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSTREAMCONSUMERRELEASEATTRIBKHRPROC>(
-                    b"eglStreamConsumerReleaseAttribKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            stream_consumer_gltexture_external_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSTREAMCONSUMERGLTEXTUREEXTERNALKHRPROC>(
-                    b"eglStreamConsumerGLTextureExternalKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            stream_consumer_accquire_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSTREAMCONSUMERACQUIREKHRPROC>(
-                    b"eglStreamConsumerAccquireKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            stream_consumer_release_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSTREAMCONSUMERRELEASEKHRPROC>(
-                    b"eglStreamConsumerReleaseKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            get_stream_file_descriptor_khr: lib
-                .get::<crate::egl::ffi::PFNEGLGETSTREAMFILEDESCRIPTORKHRPROC>(
-                    b"eglGetStreamFileDescriptorKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            create_stream_file_descriptor_khr: lib
-                .get::<crate::egl::ffi::PFNEGLCREATESTREAMFROMFILEDESCRIPTORKHRPROC>(
-                    b"eglCreateStreamFileDescriptorKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_stream_time_khr: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYSTREAMTIMEKHRPROC>(b"eglQueryStreamTimeKHR")
-                .map_or_else(|_| None, |a| *a),
-            create_stream_producer_surface_khr: lib
-                .get::<crate::egl::ffi::PFNEGLCREATESTREAMPRODUCERSURFACEKHRPROC>(
-                    b"eglCreateStreamProducerSurfaceKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            swap_buffers_with_damage_khr: lib
-                .get::<crate::egl::ffi::PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC>(
-                    b"eglSwapBuffersWithDamageKHR",
-                )
-                .map_or_else(|_| None, |a| *a),
-            wait_sync_khr: lib
-                .get::<crate::egl::ffi::PFNEGLWAITSYNCKHRPROC>(b"eglWaitSyncKHR")
-                .map_or_else(|_| None, |a| *a),
-            client_signal_sync_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCLIENTSIGNALSYNCEXTPROC>(b"eglClientSignalSyncEXT")
-                .map_or_else(|_| None, |a| *a),
-            compositor_set_context_list_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCOMPOSITORSETCONTEXTLISTEXTPROC>(
-                    b"eglCompositorSetContextListEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            compositor_set_context_attributes_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCOMPOSITORSETCONTEXTATTRIBUTESEXTPROC>(
-                    b"eglCompositorSetContextAttributesEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            compositor_set_window_list_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCOMPOSITORSETWINDOWLISTEXTPROC>(
-                    b"eglCompositorSetWindowListEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            compositor_set_window_attributes_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCOMPOSITORSETWINDOWATTRIBUTESEXTPROC>(
-                    b"eglCompositorSetWindowAttributesEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            compositor_bind_tex_window_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCOMPOSITORBINDTEXWINDOWEXTPROC>(
-                    b"eglCompositorBindTexWindowEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            compositor_set_size_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCOMPOSITORSETSIZEEXTPROC>(b"eglCompositorSetSizeEXT")
-                .map_or_else(|_| None, |a| *a),
-            compositor_swap_policy_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCOMPOSITORSWAPPOLICYEXTPROC>(
-                    b"eglCompositorSwapPolicyEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_device_attrib_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDEVICEATTRIBEXTPROC>(b"eglQueryDeviceAttribEXT")
-                .map_or_else(|_| None, |a| *a),
-            query_device_string_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDEVICESTRINGEXTPROC>(b"eglQueryDeviceStringEXT")
-                .map_or_else(|_| None, |a| *a),
-            query_devices_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDEVICESEXTPROC>(b"eglQueryDevicesEXT")
-                .map_or_else(|_| None, |a| *a),
-            query_display_attrib_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDISPLAYATTRIBEXTPROC>(
-                    b"eglQueryDisplayAttribEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_device_binary_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDEVICEBINARYEXTPROC>(b"eglQueryDeviceBinaryEXT")
-                .map_or_else(|_| None, |a| *a),
-            destroy_display_ext: lib
-                .get::<crate::egl::ffi::PFNEGLDESTROYDISPLAYEXTPROC>(b"eglDestroyDisplayEXT")
-                .map_or_else(|_| None, |a| *a),
-            query_dmabufformats_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDMABUFFORMATSEXTPROC>(
-                    b"eglQueryDMABUFFormatsEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_dmabufmodifiers_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYDMABUFMODIFIERSEXTPROC>(
-                    b"eglQueryDMABUFModifiersEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            get_output_layers_ext: lib
-                .get::<crate::egl::ffi::PFNEGLGETOUTPUTLAYERSEXTPROC>(b"eglGetOutputLayersEXT")
-                .map_or_else(|_| None, |a| *a),
-            get_output_ports_ext: lib
-                .get::<crate::egl::ffi::PFNEGLGETOUTPUTPORTSEXTPROC>(b"eglGetOutputPortsEXT")
-                .map_or_else(|_| None, |a| *a),
-            output_layer_attrib_ext: lib
-                .get::<crate::egl::ffi::PFNEGLOUTPUTLAYERATTRIBEXTPROC>(b"eglOutputLayerAttribEXT")
-                .map_or_else(|_| None, |a| *a),
-            query_output_layer_attrib_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYOUTPUTLAYERATTRIBEXTPROC>(
-                    b"eglQueryOutputLayerAttribEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_output_layer_string_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYOUTPUTLAYERSTRINGEXTPROC>(
-                    b"eglQueryOutputLayerStringEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            output_port_attrib_ext: lib
-                .get::<crate::egl::ffi::PFNEGLOUTPUTPORTATTRIBEXTPROC>(b"eglOutputPortAttribEXT")
-                .map_or_else(|_| None, |a| *a),
-            query_output_port_attrib_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYOUTPUTPORTATTRIBEXTPROC>(
-                    b"eglQueryOutputPortAttribEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_output_port_string_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYOUTPUTPORTSTRINGEXTPROC>(
-                    b"eglQueryOutputPortStringEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            get_platform_display_ext: lib
-                .get::<crate::egl::ffi::PFNEGLGETPLATFORMDISPLAYEXTPROC>(
-                    b"eglGetPlatformDisplayEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            create_platform_window_surface_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPLATFORMWINDOWSURFACEEXTPROC>(
-                    b"eglCreatePlatformWindowSurfaceEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            create_platform_pixmap_surface_ext: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPLATFORMPIXMAPSURFACEEXTPROC>(
-                    b"eglCreatePlatformPixmapSurfaceEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            stream_consumer_output_ext: lib
-                .get::<crate::egl::ffi::PFNEGLSTREAMCONSUMEROUTPUTEXTPROC>(
-                    b"eglStreamConsumerOutputEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_supported_compression_rates_ext: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYSUPPORTEDCOMPRESSIONRATESEXTPROC>(
-                    b"eglQuerySupportedCompressionRatesEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            swap_buffers_with_damage_ext: lib
-                .get::<crate::egl::ffi::PFNEGLSWAPBUFFERSWITHDAMAGEEXTPROC>(
-                    b"eglSwapBuffersWithDamageEXT",
-                )
-                .map_or_else(|_| None, |a| *a),
-            unsignal_sync_ext: lib
-                .get::<crate::egl::ffi::PFNEGLUNSIGNALSYNCEXTPROC>(b"eglUnsignalSyncEXT")
-                .map_or_else(|_| None, |a| *a),
-            create_pixmap_surface_hi: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEPIXMAPSURFACEHIPROC>(
-                    b"eglCreatePixmapSurfaceHI",
-                )
-                .map_or_else(|_| None, |a| *a),
-            create_drmimage_mesa: lib
-                .get::<crate::egl::ffi::PFNEGLCREATEDRMIMAGEMESAPROC>(b"eglCreateDRMImageMESA")
-                .map_or_else(|_| None, |a| *a),
-            export_drmimage_mesa: lib
-                .get::<crate::egl::ffi::PFNEGLEXPORTDRMIMAGEMESAPROC>(b"eglExportDRMImageMESA")
-                .map_or_else(|_| None, |a| *a),
-            export_dmabufimage_query_mesa: lib
-                .get::<crate::egl::ffi::PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC>(
-                    b"eglExportDMABUFImageQueryMESA",
-                )
-                .map_or_else(|_| None, |a| *a),
-            export_dmabufimage_mesa: lib
-                .get::<crate::egl::ffi::PFNEGLEXPORTDMABUFIMAGEMESAPROC>(
-                    b"eglExportDMABUFImageMESA",
-                )
-                .map_or_else(|_| None, |a| *a),
-            get_display_driver_config: lib
-                .get::<crate::egl::ffi::PFNEGLGETDISPLAYDRIVERCONFIGPROC>(
-                    b"eglGetDisplayDriverConfig",
-                )
-                .map_or_else(|_| None, |a| *a),
-            get_display_driver_name: lib
-                .get::<crate::egl::ffi::PFNEGLGETDISPLAYDRIVERNAMEPROC>(b"eglGetDisplayDriverName")
-                .map_or_else(|_| None, |a| *a),
-            swap_buffers_region_nok: lib
-                .get::<crate::egl::ffi::PFNEGLSWAPBUFFERSREGIONNOKPROC>(b"eglSwapBuffersRegionNOK")
-                .map_or_else(|_| None, |a| *a),
-            swap_buffers_region2_nok: lib
-                .get::<crate::egl::ffi::PFNEGLSWAPBUFFERSREGION2NOKPROC>(
-                    b"eglSwapBuffersRegion2NOK",
-                )
-                .map_or_else(|_| None, |a| *a),
-            bind_wayland_display_wl: lib
-                .get::<crate::egl::ffi::PFNEGLBINDWAYLANDDISPLAYWLPROC>(b"eglBindWaylandDisplayWL")
-                .map_or_else(|_| None, |a| *a),
-            unbind_wayland_display_wl: lib
-                .get::<crate::egl::ffi::PFNEGLUNBINDWAYLANDDISPLAYWLPROC>(
-                    b"eglUnbindWaylandDisplayWL",
-                )
-                .map_or_else(|_| None, |a| *a),
-            query_wayland_buffer_wl: lib
-                .get::<crate::egl::ffi::PFNEGLQUERYWAYLANDBUFFERWLPROC>(b"eglQueryWaylandBufferWL")
-                .map_or_else(|_| None, |a| *a),
+            choose_config: func_load!(get_proc_address, c"eglChooseConfig"),
+            copy_buffers: func_load!(get_proc_address, c"eglCopyBuffers"),
+            create_context: func_load!(get_proc_address, c"eglCreateContext"),
+            create_pbuffer_surface: func_load!(get_proc_address, c"eglCreatePbufferSurface"),
+            create_pixmap_surface: func_load!(get_proc_address, c"eglCreatePixmapSurface"),
+            create_window_surface: func_load!(get_proc_address, c"eglCreateWindowSurface"),
+            destroy_context: func_load!(get_proc_address, c"eglDestroyContext"),
+            destroy_surface: func_load!(get_proc_address, c"eglDestroySurface"),
+            get_config_attrib: func_load!(get_proc_address, c"eglGetConfigAttric"),
+            get_configs: func_load!(get_proc_address, c"eglGetConfigs"),
+            get_current_display: func_load!(get_proc_address, c"eglGetCurrentDisplay"),
+            get_current_surface: func_load!(get_proc_address, c"eglGetCurrentSurface"),
+            get_display: func_load!(get_proc_address, c"eglGetDisplay"),
+            get_error: func_load!(get_proc_address, c"eglGetError"),
+            get_proc_address: func_load!(get_proc_address, c"eglGetProcAddress"),
+            initialize: func_load!(get_proc_address, c"eglInitialize"),
+            make_current: func_load!(get_proc_address, c"eglMakeCurrent"),
+            query_context: func_load!(get_proc_address, c"eglQueryContext"),
+            query_string: func_load!(get_proc_address, c"eglQueryString"),
+            query_surface: func_load!(get_proc_address, c"eglQuerySurface"),
+            swap_buffers: func_load!(get_proc_address, c"eglSwapBuffers"),
+            terminate: func_load!(get_proc_address, c"eglTerminate"),
+            wait_gl: func_load!(get_proc_address, c"eglWaitGL"),
+            wait_native: func_load!(get_proc_address, c"eglWaitNative"),
+            bind_tex_image: func_load!(get_proc_address, c"eglBindTexImage"),
+            release_tex_image: func_load!(get_proc_address, c"eglReleaseTexImage"),
+            surface_attrib: func_load!(get_proc_address, c"eglSurfaceAttric"),
+            swap_interval: func_load!(get_proc_address, c"eglSwapInterval"),
+            bind_api: func_load!(get_proc_address, c"eglBindAPI"),
+            query_api: func_load!(get_proc_address, c"eglQueryAPI"),
+            create_pbuffer_from_client_buffer: func_load!(
+                get_proc_address,
+                c"eglCreatePbufferFromClientBuffer"
+            ),
+            release_thread: func_load!(get_proc_address, c"eglReleaseThread"),
+            wait_client: func_load!(get_proc_address, c"eglWaitClient"),
+            get_current_context: func_load!(get_proc_address, c"eglGetCurrentContext"),
+            create_sync: func_load!(get_proc_address, c"eglCreateSync"),
+            destroy_sync: func_load!(get_proc_address, c"eglDestroySync"),
+            client_wait_sync: func_load!(get_proc_address, c"eglClientWaitSync"),
+            get_sync_attrib: func_load!(get_proc_address, c"eglGetSyncAttric"),
+            create_image: func_load!(get_proc_address, c"eglCreateImage"),
+            destroy_image: func_load!(get_proc_address, c"eglDestroyImage"),
+            get_platform_display: func_load!(get_proc_address, c"eglGetPlatformDisplay"),
+            create_platform_window_surface: func_load!(
+                get_proc_address,
+                c"eglCreatePlatformWindowSurface"
+            ),
+            create_platform_pixmap_surface: func_load!(
+                get_proc_address,
+                c"eglCreatePlatformPixmapSurface"
+            ),
+            wait_sync: func_load!(get_proc_address, c"eglWaitSync"),
+            debug_message_control_khr: func_load!(get_proc_address, c"eglDebugMessageControlKHR"),
+            query_debug_khr: func_load!(get_proc_address, c"eglQueryDebugKHR"),
+            label_object_khr: func_load!(get_proc_address, c"eglLabelObjectKHR"),
+            query_display_attrib_khr: func_load!(get_proc_address, c"eglQueryDisplayAttribKHR"),
+            create_sync_khr: func_load!(get_proc_address, c"eglCreateSyncKHR"),
+            destroy_sync_khr: func_load!(get_proc_address, c"eglDestroySyncKHR"),
+            client_wait_sync_khr: func_load!(get_proc_address, c"eglClientWaitSyncKHR"),
+            get_sync_attrib_khr: func_load!(get_proc_address, c"eglGetSyncAttribKHR"),
+            create_image_khr: func_load!(get_proc_address, c"eglCreateImageKHR"),
+            destroy_image_khr: func_load!(get_proc_address, c"eglDestroyImageKHR"),
+            lock_surface_khr: func_load!(get_proc_address, c"eglLockSurfaceKHR"),
+            unlock_surface_khr: func_load!(get_proc_address, c"eglUnlockSurfaceKHR"),
+            set_damageregionkhr: func_load!(get_proc_address, c"eglSetDAMAGEREGIONKHR"),
+            signal_sync_khr: func_load!(get_proc_address, c"eglSignalSyncKHR"),
+            create_stream_khr: func_load!(get_proc_address, c"eglCreateStreamKHR"),
+            destroy_stream_khr: func_load!(get_proc_address, c"eglDestroyStreamKHR"),
+            stream_attrib_khr: func_load!(get_proc_address, c"eglStreamAttribKHR"),
+            query_stream_khr: func_load!(get_proc_address, c"eglQueryStreamKHR"),
+            create_stream_attrib_khr: func_load!(get_proc_address, c"eglCreateStreamAttribKHR"),
+            set_stream_attrib_khr: func_load!(get_proc_address, c"eglSetStreamAttribKHR"),
+            query_stream_attrib_khr: func_load!(get_proc_address, c"eglQueryStreamAttribKHR"),
+            stream_consumer_accquire_attrib_khr: func_load!(
+                get_proc_address,
+                c"eglStreamConsumerAccquireAttribKHR"
+            ),
+            stream_consumer_release_attrib_khr: func_load!(
+                get_proc_address,
+                c"eglStreamConsumerReleaseAttribKHR"
+            ),
+            stream_consumer_gltexture_external_khr: func_load!(
+                get_proc_address,
+                c"eglStreamConsumerGLTextureExternalKHR"
+            ),
+            stream_consumer_accquire_khr: func_load!(
+                get_proc_address,
+                c"eglStreamConsumerAccquireKHR"
+            ),
+            stream_consumer_release_khr: func_load!(
+                get_proc_address,
+                c"eglStreamConsumerReleaseKHR"
+            ),
+            get_stream_file_descriptor_khr: func_load!(
+                get_proc_address,
+                c"eglGetStreamFileDescriptorKHR"
+            ),
+            create_stream_file_descriptor_khr: func_load!(
+                get_proc_address,
+                c"eglCreateStreamFileDescriptorKHR"
+            ),
+            query_stream_time_khr: func_load!(get_proc_address, c"eglQueryStreamTimeKHR"),
+            create_stream_producer_surface_khr: func_load!(
+                get_proc_address,
+                c"eglCreateStreamProducerSurfaceKHR"
+            ),
+            swap_buffers_with_damage_khr: func_load!(
+                get_proc_address,
+                c"eglSwapBuffersWithDamageKHR"
+            ),
+            wait_sync_khr: func_load!(get_proc_address, c"eglWaitSyncKHR"),
+            client_signal_sync_ext: func_load!(get_proc_address, c"eglClientSignalSyncEXT"),
+            compositor_set_context_list_ext: func_load!(
+                get_proc_address,
+                c"eglCompositorSetContextListEXT"
+            ),
+            compositor_set_context_attributes_ext: func_load!(
+                get_proc_address,
+                c"eglCompositorSetContextAttributesEXT"
+            ),
+            compositor_set_window_list_ext: func_load!(
+                get_proc_address,
+                c"eglCompositorSetWindowListEXT"
+            ),
+            compositor_set_window_attributes_ext: func_load!(
+                get_proc_address,
+                c"eglCompositorSetWindowAttributesEXT"
+            ),
+            compositor_bind_tex_window_ext: func_load!(
+                get_proc_address,
+                c"eglCompositorBindTexWindowEXT"
+            ),
+            compositor_set_size_ext: func_load!(get_proc_address, c"eglCompositorSetSizeEXT"),
+            compositor_swap_policy_ext: func_load!(get_proc_address, c"eglCompositorSwapPolicyEXT"),
+            query_device_attrib_ext: func_load!(get_proc_address, c"eglQueryDeviceAttribEXT"),
+            query_device_string_ext: func_load!(get_proc_address, c"eglQueryDeviceStringEXT"),
+            query_devices_ext: func_load!(get_proc_address, c"eglQueryDevicesEXT"),
+            query_display_attrib_ext: func_load!(get_proc_address, c"eglQueryDisplayAttribEXT"),
+            query_device_binary_ext: func_load!(get_proc_address, c"eglQueryDeviceBinaryEXT"),
+            destroy_display_ext: func_load!(get_proc_address, c"eglDestroyDisplayEXT"),
+            query_dmabufformats_ext: func_load!(get_proc_address, c"eglQueryDMABUFFormatsEXT"),
+            query_dmabufmodifiers_ext: func_load!(get_proc_address, c"eglQueryDMABUFModifiersEXT"),
+            get_output_layers_ext: func_load!(get_proc_address, c"eglGetOutputLayersEXT"),
+            get_output_ports_ext: func_load!(get_proc_address, c"eglGetOutputPortsEXT"),
+            output_layer_attrib_ext: func_load!(get_proc_address, c"eglOutputLayerAttribEXT"),
+            query_output_layer_attrib_ext: func_load!(
+                get_proc_address,
+                c"eglQueryOutputLayerAttribEXT"
+            ),
+            query_output_layer_string_ext: func_load!(
+                get_proc_address,
+                c"eglQueryOutputLayerStringEXT"
+            ),
+            output_port_attrib_ext: func_load!(get_proc_address, c"eglOutputPortAttribEXT"),
+            query_output_port_attrib_ext: func_load!(
+                get_proc_address,
+                c"eglQueryOutputPortAttribEXT"
+            ),
+            query_output_port_string_ext: func_load!(
+                get_proc_address,
+                c"eglQueryOutputPortStringEXT"
+            ),
+            get_platform_display_ext: func_load!(get_proc_address, c"eglGetPlatformDisplayEXT"),
+            create_platform_window_surface_ext: func_load!(
+                get_proc_address,
+                c"eglCreatePlatformWindowSurfaceEXT"
+            ),
+            create_platform_pixmap_surface_ext: func_load!(
+                get_proc_address,
+                c"eglCreatePlatformPixmapSurfaceEXT"
+            ),
+            stream_consumer_output_ext: func_load!(get_proc_address, c"eglStreamConsumerOutputEXT"),
+            query_supported_compression_rates_ext: func_load!(
+                get_proc_address,
+                c"eglQuerySupportedCompressionRatesEXT"
+            ),
+            swap_buffers_with_damage_ext: func_load!(
+                get_proc_address,
+                c"eglSwapBuffersWithDamageEXT"
+            ),
+            unsignal_sync_ext: func_load!(get_proc_address, c"eglUnsignalSyncEXT"),
+            create_pixmap_surface_hi: func_load!(get_proc_address, c"eglCreatePixmapSurfaceHI"),
+            create_drmimage_mesa: func_load!(get_proc_address, c"eglCreateDRMImageMESA"),
+            export_drmimage_mesa: func_load!(get_proc_address, c"eglExportDRMImageMESA"),
+            export_dmabufimage_query_mesa: func_load!(
+                get_proc_address,
+                c"eglExportDMABUFImageQueryMESA"
+            ),
+            export_dmabufimage_mesa: func_load!(get_proc_address, c"eglExportDMABUFImageMESA"),
+            get_display_driver_config: func_load!(get_proc_address, c"eglGetDisplayDriverConfig"),
+            get_display_driver_name: func_load!(get_proc_address, c"eglGetDisplayDriverName"),
+            swap_buffers_region_nok: func_load!(get_proc_address, c"eglSwapBuffersRegionNOK"),
+            swap_buffers_region2_nok: func_load!(get_proc_address, c"eglSwapBuffersRegion2NOK"),
+            bind_wayland_display_wl: func_load!(get_proc_address, c"eglBindWaylandDisplayWL"),
+            unbind_wayland_display_wl: func_load!(get_proc_address, c"eglUnbindWaylandDisplayWL"),
+            query_wayland_buffer_wl: func_load!(get_proc_address, c"eglQueryWaylandBufferWL"),
         }
     }
 
