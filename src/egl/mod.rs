@@ -144,7 +144,8 @@ impl EGL {
 
     gen_func!(get_current_display, () -> EGLDisplay,
     );
-
+    gen_func!(get_current_context, () -> EGLContext,
+    );
     gen_func!(initialize, (dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean,
     );
     gen_func!(bind_api, (version: u32) -> EGLBoolean,

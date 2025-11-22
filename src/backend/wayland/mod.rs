@@ -46,6 +46,7 @@ pub struct WaylandState {
     wm_base: Option<XdgWmBase>,
     xdg_surface: Option<XdgSurface>,
     xdg_top_level: Option<XdgToplevel>,
+    native_surface: EGLSurface,
     egl_surface: Option<WlEglSurface>,
     egl: Option<EGL>,
     display: EGLDisplay,
@@ -59,14 +60,8 @@ pub struct WaylandState {
 }
 
 impl WaylandState {
-    pub fn wait_for_egl(&mut self) -> (&mut WlEglSurface, &mut EGL, &mut EGLDisplay) {
+    pub fn wait_for_egl(&self) {
         while !self.configured {}
-
-        (
-            unsafe { self.egl_surface.as_mut().unwrap_unchecked() },
-            unsafe { self.egl.as_mut().unwrap_unchecked() },
-            &mut self.display,
-        )
     }
 }
 
@@ -141,14 +136,13 @@ impl WaylandWindow {
                 gl::Clear(COLOR_BUFFER_BIT);
                 gl::Flush();
 
-                self.state
-                    .egl()
-                    .swap_buffers(
-                        self.state.display,
-                        self.state.egl_surface().ptr() as EGLSurface,
-                    )
-                    .unwrap();
-                self.state.compositor_surface().commit();
+                let egl = self.state.egl();
+
+                self.state.panic_on_error(
+                    "Error swapping buffers",
+                    egl.swap_buffers(self.state.display, self.state.native_surface)
+                        .unwrap(),
+                );
             };
         }
     }
@@ -198,11 +192,14 @@ impl WaylandState {
 
     pub unsafe fn panic_on_error(&self, reason: &str, err: EGLBoolean) {
         if err != EGL_TRUE {
-            panic!(
-                "{}: {}",
-                reason,
-                self.egl.as_ref().unwrap().get_error_str().unwrap()
-            );
+            if let Some(egl) = self.egl.as_ref() {
+                panic!(
+                    "{}: {} ({:X})",
+                    reason,
+                    egl.get_error_str().unwrap(),
+                    egl.get_error().unwrap()
+                );
+            }
         }
     }
 }
@@ -240,7 +237,7 @@ impl Window for WaylandWindow {
         unimplemented!("get_video_info");
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
-        let (surface, egl, display) = self.state.wait_for_egl();
+        self.state.wait_for_egl();
         self.sanity_test();
 
         let attr = match attr {
@@ -260,9 +257,11 @@ impl Window for WaylandWindow {
         ret
     }
     fn gl_get_proc_address(&mut self, proc: *const c_char) -> *mut c_void {
-        let (_, egl, display) = self.state.wait_for_egl();
+        self.state.wait_for_egl();
         unsafe {
-            match egl
+            match self
+                .state
+                .egl()
                 .get_proc_address(proc)
                 .expect("eglGetProcAddress missing")
             {

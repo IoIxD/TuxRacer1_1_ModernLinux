@@ -1,5 +1,6 @@
 use std::{fs::File, os::fd::AsFd};
 
+use std::io::Write;
 use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle,
     protocol::{
@@ -95,17 +96,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
 
 // test drawing function
 pub fn draw(tmp: &mut File, (buf_x, buf_y): (u32, u32)) {
-    use std::{cmp::min, io::Write};
     let mut buf = std::io::BufWriter::new(tmp);
-    for y in 0..buf_y {
-        for x in 0..buf_x {
-            let a = 0xFF;
-            let r = min(((buf_x - x) * 0xFF) / buf_x, ((buf_y - y) * 0xFF) / buf_y);
-            let g = min((x * 0xFF) / buf_x, ((buf_y - y) * 0xFF) / buf_y);
-            let b = min(((buf_x - x) * 0xFF) / buf_x, (y * 0xFF) / buf_y);
-            buf.write_all(&[b as u8, g as u8, r as u8, a as u8])
-                .unwrap();
-        }
-    }
+
     buf.flush().unwrap();
 }

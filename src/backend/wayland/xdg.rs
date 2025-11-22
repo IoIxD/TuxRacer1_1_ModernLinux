@@ -23,7 +23,7 @@ use crate::{
         EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT, EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_FALSE,
         EGL_GREEN_SIZE, EGL_NATIVE_VISUAL_ID, EGL_NONE, EGL_OPENGL_API, EGL_OPENGL_BIT,
         EGL_RED_SIZE, EGL_RENDERABLE_TYPE, EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGLConfig, EGLDisplay,
-        EGLNativeWindowType, EGLint,
+        EGLNativeWindowType, EGLSurface, EGLint,
     },
 };
 use std::mem::MaybeUninit;
@@ -45,12 +45,18 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     return;
                 }
 
+                // !!! We have to get the EGL in this weird way
+                // because the rest of the functions assume a globally
+                // stored EGL (state.panic_on_error). This is weird,
+                // but do not change it.
+                state.egl = Some(EGL::new());
+                // SAFETY: if the above line didn't set it then we have bigger problems.
+                let egl = state.egl.as_ref().unwrap_unchecked();
+
                 let compositor = state.compositor();
                 let compositor_surface = state.compositor_surface();
                 let native_display = state.native_display();
                 let egl_surface = state.egl_surface();
-
-                let egl = EGL::new();
 
                 pub const EGL_PLATFORM_WAYLAND_KHR: u32 = 0x31D8;
                 let display = egl
@@ -122,8 +128,9 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     .unwrap(),
                 );
 
-                // find the native visual config
-                println!("{} (out of {}) configs", matched_config_num, config_num);
+                // get a surface using the first config that yields a valid result
+                let mut n = 0;
+                let mut surface: MaybeUninit<EGLSurface> = MaybeUninit::uninit();
                 for i in 0..matched_config_num {
                     let mut vis_id = 0;
                     if egl
@@ -138,8 +145,26 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     {
                         continue;
                     };
+                    surface.write(
+                        egl.create_window_surface(
+                            display,
+                            configs[0],
+                            egl_surface.ptr() as EGLNativeWindowType,
+                            null_mut(),
+                        )
+                        .unwrap(),
+                    );
+                    if !surface.assume_init().is_null() {
+                        n = i;
+                        break;
+                    }
                     println!("config: {:?}", vis_id);
                 }
+                let surface = surface.assume_init();
+                if surface.is_null() {
+                    panic!("null egl surface!");
+                }
+                println!("got surface ({:?})", surface);
 
                 let context_attributes = [
                     EGL_CONTEXT_MAJOR_VERSION as i32,
@@ -153,25 +178,22 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
 
                 let window = MaybeUninit::<EGLNativeWindowType>::uninit();
 
-                let surface = egl
-                    .create_window_surface(
+                let ctx = egl
+                    .create_context(
                         display,
-                        configs[0],
-                        egl_surface.ptr() as EGLNativeWindowType,
+                        configs[n as usize],
                         null_mut(),
+                        context_attributes.as_ptr(),
                     )
                     .unwrap();
 
-                if surface.is_null() {
-                    panic!("null egl surface!");
-                }
-                println!("got surface ({:?})", surface);
+                state.panic_on_error(
+                    "Error making context current",
+                    egl.make_current(display, surface, surface, ctx).unwrap(),
+                );
 
-                let ctx = egl
-                    .create_context(display, configs[0], null_mut(), context_attributes.as_ptr())
-                    .unwrap();
-
-                egl.make_current(display, surface, surface, ctx).unwrap();
+                let new_ctx = egl.get_current_context().unwrap();
+                assert!(ctx == new_ctx);
 
                 gl::load_with(|name| {
                     let cstr = CString::new(name).unwrap();
@@ -181,11 +203,11 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     }
                 });
 
-                compositor_surface.attach(state.buffer.as_ref(), 0, 0);
-                compositor_surface.commit();
+                // compositor_surface.attach(state.buffer.as_ref(), 0, 0);
+                // compositor_surface.commit();
 
-                state.egl = Some(egl);
                 state.display = display;
+                state.native_surface = surface;
 
                 state.configured = true;
             },
