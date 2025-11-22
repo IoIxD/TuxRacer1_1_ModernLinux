@@ -41,7 +41,7 @@ use crate::{
     backend::Window,
     egl::{EGL, EGL_TRUE, EGLBoolean, EGLDisplay, EGLSurface},
     type_defs::{
-        self, SDL_EventType, SDL_Rect, SDL_Surface, SDL_VideoInfo, SDL_keysym, SDLKey,
+        self, SDL_EventType, SDL_GLattr, SDL_Rect, SDL_Surface, SDL_VideoInfo, SDL_keysym, SDLKey,
         SDLKey_SDLK_0, SDLKey_SDLK_LAST, SDLKey_SDLK_UP, SDLMod_KMOD_NONE,
     },
 };
@@ -160,6 +160,7 @@ pub struct WaylandWindow {
     event_queue: EventQueue<WaylandState>,
     video_info: SDL_VideoInfo,
     fake_surface: SDL_Surface,
+    gl_attrs: [i32; 32],
 }
 
 impl WaylandWindow {
@@ -201,7 +202,7 @@ impl WaylandWindow {
             _bitfield_align_1: [],
             _bitfield_1: unsafe { std::mem::transmute(255_u8) },
             blit_fill: 0,
-            video_mem: 0,
+            video_mem: 2048000,
             vfmt: unsafe { std::mem::transmute(0) },
         };
 
@@ -210,6 +211,7 @@ impl WaylandWindow {
             event_queue,
             video_info,
             fake_surface,
+            gl_attrs: [0; _],
         }
     }
 
@@ -381,24 +383,7 @@ impl Window for WaylandWindow {
         return &mut self.video_info;
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
-        self.state.wait_for_egl();
-        // self.sanity_test();
-
-        let attr = match attr {
-            type_defs::SDL_GLattr::RED_SIZE => gl::RENDERBUFFER_RED_SIZE,
-            type_defs::SDL_GLattr::GREEN_SIZE => gl::RENDERBUFFER_GREEN_SIZE,
-            type_defs::SDL_GLattr::BLUE_SIZE => gl::RENDERBUFFER_BLUE_SIZE,
-            type_defs::SDL_GLattr::ALPHA_SIZE => gl::RENDERBUFFER_ALPHA_SIZE,
-            type_defs::SDL_GLattr::DOUBLEBUFFER => gl::DOUBLEBUFFER,
-            type_defs::SDL_GLattr::BUFFER_SIZE => gl::BUFFER_SIZE,
-            type_defs::SDL_GLattr::DEPTH_SIZE => gl::RENDERBUFFER_DEPTH_SIZE,
-            type_defs::SDL_GLattr::STENCIL_SIZE => gl::RENDERBUFFER_STENCIL_SIZE,
-            _ => todo!(),
-        };
-        let mut ret: i32 = 0;
-
-        unsafe { gl::GetIntegerv(attr, &mut ret) };
-        ret
+        self.gl_attrs[attr as usize]
     }
     fn gl_get_proc_address(&mut self, proc: *const c_char) -> *mut c_void {
         self.state.wait_for_egl();
@@ -415,7 +400,8 @@ impl Window for WaylandWindow {
         }
     }
     fn gl_set_attribute(&mut self, attr: type_defs::SDL_GLattr, value: i32) -> i32 {
-        // todo?
+        println!("{:?} => {}", attr, value);
+        self.gl_attrs[attr as usize] = value;
         0
     }
     fn gl_swap_buffers(&mut self) {

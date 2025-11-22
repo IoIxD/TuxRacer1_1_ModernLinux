@@ -10,11 +10,13 @@ use wayland_protocols::xdg::shell::client::{
 use crate::{
     backend::wayland::WaylandState,
     egl::{
-        EGL, EGL_BLUE_SIZE, EGL_CONTEXT_MAJOR_VERSION, EGL_CONTEXT_MINOR_VERSION,
-        EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT, EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_FALSE,
-        EGL_GREEN_SIZE, EGL_NATIVE_VISUAL_ID, EGL_NONE, EGL_OPENGL_API, EGL_OPENGL_BIT,
-        EGL_RED_SIZE, EGL_RENDERABLE_TYPE, EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGLConfig, EGLDisplay,
-        EGLNativeWindowType, EGLSurface, EGLint,
+        EGL, EGL_ALPHA_FORMAT, EGL_ALPHA_FORMAT_NONPRE, EGL_ALPHA_FORMAT_PRE, EGL_ALPHA_MASK_SIZE,
+        EGL_ALPHA_SIZE, EGL_BLUE_SIZE, EGL_BUFFER_SIZE, EGL_CONTEXT_MAJOR_VERSION,
+        EGL_CONTEXT_MINOR_VERSION, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+        EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_FALSE, EGL_GREEN_SIZE, EGL_NATIVE_VISUAL_ID, EGL_NONE,
+        EGL_OPENGL_API, EGL_OPENGL_BIT, EGL_RED_SIZE, EGL_RENDERABLE_TYPE, EGL_STENCIL_SIZE,
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGLConfig, EGLDisplay, EGLNativeWindowType, EGLSurface,
+        EGLint,
     },
 };
 use std::mem::MaybeUninit;
@@ -91,6 +93,10 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     EGL_GREEN_SIZE as i32,
                     8,
                     EGL_BLUE_SIZE as i32,
+                    8,
+                    EGL_BUFFER_SIZE as i32,
+                    1,
+                    EGL_STENCIL_SIZE as i32,
                     8,
                     EGL_NONE as i32,
                 ];

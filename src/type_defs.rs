@@ -759,6 +759,7 @@ pub struct SDL_Rect {
     pub h: ::std::os::raw::c_int,
 }
 
+#[derive(Debug)]
 #[repr(C)]
 pub enum SDL_GLattr {
     RED_SIZE = 0,
