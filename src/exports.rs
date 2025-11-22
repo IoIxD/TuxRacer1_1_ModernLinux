@@ -6,7 +6,7 @@
 
 use std::ffi::{CStr, c_char, c_int, c_void};
 
-use crate::{file::new_sdl_rwops, sigsegv_handler, type_defs, window};
+use crate::{sigsegv_handler, type_defs, window};
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_Delay(ms: u32) {

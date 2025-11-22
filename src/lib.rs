@@ -1,12 +1,12 @@
-#![feature(link_llvm_intrinsics)] // :3
+//#![feature(link_llvm_intrinsics)] // :3
 #![allow(unsafe_op_in_unsafe_fn)]
 #![allow(static_mut_refs)]
 #![allow(unused_variables)]
 
-unsafe extern "C" {
-    #[link_name = "llvm.returnaddress"]
-    pub fn return_address(a: i32) -> *const u8;
-}
+//unsafe extern "C" {
+//    #[link_name = "llvm.returnaddress"]
+//    pub fn return_address(a: i32) -> *const u8;
+//}
 
 mod exports;
 
