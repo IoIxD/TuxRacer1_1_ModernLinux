@@ -21,7 +21,7 @@ pub unsafe extern "C" fn SDL_EnableKeyRepeat(delay: c_int, interval: c_int) -> c
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_GetError() -> *const u8 {
-    window().lock().get_error().as_ptr()
+    window().lock().get_error()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_GetKeyState(numkeys: *mut c_int) -> *mut u8 {

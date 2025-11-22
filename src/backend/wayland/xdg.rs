@@ -1,6 +1,7 @@
 use std::{
     ffi::CString,
     os::raw::c_void,
+    process::exit,
     ptr::{null, null_mut},
 };
 
@@ -203,9 +204,6 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     }
                 });
 
-                // compositor_surface.attach(state.buffer.as_ref(), 0, 0);
-                // compositor_surface.commit();
-
                 state.display = display;
                 state.native_surface = surface;
 
@@ -225,6 +223,12 @@ impl Dispatch<XdgToplevel, ()> for WaylandState {
         conn: &wayland_client::Connection,
         qhandle: &wayland_client::QueueHandle<Self>,
     ) {
+        match event {
+            wayland_protocols::xdg::shell::client::xdg_toplevel::Event::Close => {
+                state.running = false;
+            }
+            _ => {}
+        }
     }
 }
 impl Dispatch<XdgWmBase, ()> for WaylandState {

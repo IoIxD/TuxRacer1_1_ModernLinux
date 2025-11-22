@@ -10,7 +10,7 @@ pub trait Window {
 
     fn delay(&mut self, ms: u32);
     fn enable_key_repeat(&mut self, delay: i32, interval: i32) -> i32;
-    fn get_error(&mut self) -> &'static str;
+    fn get_error(&mut self) -> *const u8;
     fn get_key_state(&mut self, numkeys: *mut i32) -> *mut u8;
     fn get_mod_state(&mut self) -> type_defs::SDLMod;
     fn get_mouse_state(&mut self, x: *mut i32, y: *mut i32) -> u8;

@@ -42,9 +42,7 @@ where
     pub unsafe fn raw_get_bit(this: *const Self, index: usize) -> bool {
         debug_assert!(index / 8 < core::mem::size_of::<Storage>());
         let byte_index = index / 8;
-        let byte = unsafe {
-            *(core::ptr::addr_of!((*this).storage) as *const u8).add(byte_index)
-        };
+        let byte = unsafe { *(core::ptr::addr_of!((*this).storage) as *const u8).add(byte_index) };
         Self::extract_bit(byte, index)
     }
     #[inline]
@@ -68,9 +66,7 @@ where
     pub unsafe fn raw_set_bit(this: *mut Self, index: usize, val: bool) {
         debug_assert!(index / 8 < core::mem::size_of::<Storage>());
         let byte_index = index / 8;
-        let byte = unsafe {
-            (core::ptr::addr_of_mut!((*this).storage) as *mut u8).add(byte_index)
-        };
+        let byte = unsafe { (core::ptr::addr_of_mut!((*this).storage) as *mut u8).add(byte_index) };
         unsafe {
             *byte = Self::change_bit(*byte, index, val);
         }
@@ -975,4 +971,61 @@ pub struct SDL_Surface {
     pub pixels: *mut ::std::os::raw::c_void,
     pub clip_rect: SDL_Rect,
     pub refcount: ::std::os::raw::c_int,
+}
+#[repr(C)]
+pub enum SDL_EventType {
+    SDL_NOEVENT = 0,
+    /**< Unused (do not remove) */
+    SDL_ACTIVEEVENT,
+    /**< Application loses/gains visibility */
+    SDL_KEYDOWN,
+    /**< Keys pressed */
+    SDL_KEYUP,
+    /**< Keys released */
+    SDL_MOUSEMOTION,
+    /**< Mouse moved */
+    SDL_MOUSEBUTTONDOWN,
+    /**< Mouse button pressed */
+    SDL_MOUSEBUTTONUP,
+    /**< Mouse button released */
+    SDL_JOYAXISMOTION,
+    /**< Joystick axis motion */
+    SDL_JOYBALLMOTION,
+    /**< Joystick trackball motion */
+    SDL_JOYHATMOTION,
+    /**< Joystick hat position change */
+    SDL_JOYBUTTONDOWN,
+    /**< Joystick button pressed */
+    SDL_JOYBUTTONUP,
+    /**< Joystick button released */
+    SDL_QUIT,
+    /**< User-requested quit */
+    SDL_SYSWMEVENT,
+    /**< System specific event */
+    SDL_EVENT_RESERVEDA,
+    /**< Reserved for future use.. */
+    SDL_EVENT_RESERVEDB,
+    /**< Reserved for future use.. */
+    SDL_VIDEORESIZE,
+    /**< User resized video mode */
+    SDL_VIDEOEXPOSE,
+    /**< Screen needs to be redrawn */
+    SDL_EVENT_RESERVED2,
+    /**< Reserved for future use.. */
+    SDL_EVENT_RESERVED3,
+    /**< Reserved for future use.. */
+    SDL_EVENT_RESERVED4,
+    /**< Reserved for future use.. */
+    SDL_EVENT_RESERVED5,
+    /**< Reserved for future use.. */
+    SDL_EVENT_RESERVED6,
+    /**< Reserved for future use.. */
+    SDL_EVENT_RESERVED7,
+    /**< Reserved for future use.. */
+    /** Events SDL_USEREVENT through SDL_MAXEVENTS-1 are for your use */
+    SDL_USEREVENT = 24,
+    /** This last event is only for bounding internal arrays
+    	*  It is the number of bits in the event mask datatype -- Uint32
+     */
+    SDL_NUMEVENTS = 32,
 }

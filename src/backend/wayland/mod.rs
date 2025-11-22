@@ -1,8 +1,10 @@
 #![allow(unused_variables)]
 use std::{
-    ffi::{c_char, c_void},
+    ffi::{CStr, CString, c_char, c_void},
     io::ErrorKind,
-    ptr::null_mut,
+    process::exit,
+    ptr::{null, null_mut},
+    time::SystemTime,
 };
 
 mod registry;
@@ -29,7 +31,7 @@ use wayland_sys::{
 use crate::{
     backend::Window,
     egl::{EGL, EGL_TRUE, EGLBoolean, EGLDisplay, EGLSurface, wl_buffer},
-    type_defs::{self, SDL_Rect, SDL_Surface},
+    type_defs::{self, SDL_EventType, SDL_Rect, SDL_Surface, SDL_VideoInfo, SDLMod_KMOD_NONE},
 };
 use wayland_protocols::xdg::{
     decoration::zv1::client::{
@@ -57,6 +59,8 @@ pub struct WaylandState {
     // note: this protocols are unstable and thus shouldn't have getters that assume they're there.
     decoration_manager: Option<ZxdgDecorationManagerV1>,
     toplevel_decoration: Option<ZxdgToplevelDecorationV1>,
+    running: bool,
+    quit_attempts: u8,
 }
 
 impl WaylandState {
@@ -68,6 +72,7 @@ impl WaylandState {
 pub struct WaylandWindow {
     state: WaylandState,
     event_queue: EventQueue<WaylandState>,
+    video_info: SDL_VideoInfo,
 }
 
 impl WaylandWindow {
@@ -80,14 +85,27 @@ impl WaylandWindow {
         let display = conn.display();
         display.get_registry(&qhandle, ());
 
+        let video_info = SDL_VideoInfo {
+            _bitfield_align_1: [],
+            _bitfield_1: unsafe { std::mem::transmute(0_u8) },
+            blit_fill: 0,
+            video_mem: 0,
+            vfmt: unsafe { std::mem::transmute(0) },
+        };
+
         let mut state = WaylandState {
             configured: false,
             native_display: Some(display),
+            running: true,
             ..Default::default()
         };
         event_queue.roundtrip(&mut state).unwrap();
 
-        Self { state, event_queue }
+        Self {
+            state,
+            event_queue,
+            video_info,
+        }
     }
 
     pub fn event_loop(&mut self) {
@@ -118,7 +136,6 @@ impl WaylandWindow {
         if let Some(guard) = self.event_queue.prepare_read() {
             let read = guard.read().unwrap();
             if read <= 0 {
-                print!("read 0 events\r");
                 return;
             }
             print!("read {} events\t\t\t\t\n", read);
@@ -167,14 +184,15 @@ impl WaylandState {
     pub fn native_display(&self) -> &WlDisplay {
         self.native_display.as_ref().unwrap()
     }
-
+    pub fn xdg_top_level(&self) -> &XdgToplevel {
+        self.xdg_top_level.as_ref().unwrap()
+    }
     fn init_xdg_surface(&mut self, qh: &QueueHandle<WaylandState>) {
         let wm_base = self.wm_base.as_ref().unwrap();
         let compositor_surface = self.compositor_surface.as_ref().unwrap();
 
         let xdg_surface = wm_base.get_xdg_surface(compositor_surface, qh, ());
         let toplevel = xdg_surface.get_toplevel(qh, ());
-        toplevel.set_title("A fantastic window!".into());
 
         if let Some(decoration_manager) = self.decoration_manager.as_mut() {
             let toplevel_decoration = decoration_manager.get_toplevel_decoration(&toplevel, qh, ());
@@ -216,29 +234,37 @@ impl Window for WaylandWindow {
     fn quit(&mut self) {}
 
     fn delay(&mut self, ms: u32) {
-        unimplemented!("delay");
+        let time = SystemTime::now();
+        while time.elapsed().unwrap().as_millis() <= ms as u128 {}
     }
     fn enable_key_repeat(&mut self, delay: i32, interval: i32) -> i32 {
-        unimplemented!("enable_key_repeat");
+        println!("enable_key_repeat");
+        return 0;
     }
-    fn get_error(&mut self) -> &'static str {
-        unimplemented!("get_error");
+    fn get_error(&mut self) -> *const u8 {
+        println!("get_error");
+        return null();
+        // return Box::leak(Box::new(CString::new("")));
     }
     fn get_key_state(&mut self, numkeys: *mut i32) -> *mut u8 {
-        unimplemented!("get_key_state");
+        println!("get_key_state");
+        return null_mut();
     }
     fn get_mod_state(&mut self) -> type_defs::SDLMod {
-        unimplemented!("get_mod_state");
+        println!("get_mod_state");
+        return SDLMod_KMOD_NONE;
     }
     fn get_mouse_state(&mut self, x: *mut i32, y: *mut i32) -> u8 {
-        unimplemented!("get_mouse_state");
+        println!("get_mouse_state");
+        return 0;
     }
     fn get_video_info(&mut self) -> *mut type_defs::SDL_VideoInfo {
-        unimplemented!("get_video_info");
+        println!("get_video_info");
+        return &mut self.video_info;
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
         self.state.wait_for_egl();
-        self.sanity_test();
+        // self.sanity_test();
 
         let attr = match attr {
             type_defs::SDL_GLattr::RED_SIZE => gl::RENDERBUFFER_RED_SIZE,
@@ -275,11 +301,19 @@ impl Window for WaylandWindow {
         0
     }
     fn gl_swap_buffers(&mut self) {
-        unimplemented!("gl_swap_buffers");
+        let egl = self.state.egl();
+        unsafe {
+            self.state.panic_on_error(
+                "Error swapping buffers",
+                egl.swap_buffers(self.state.display, self.state.native_surface)
+                    .unwrap(),
+            );
+        }
     }
 
     fn joystick_event_state(&mut self, state: i32) -> i32 {
-        unimplemented!("joystick_event_state");
+        return 0;
+        // unimplemented!("joystick_event_state");
     }
     fn joystick_get_axis(&mut self, joystick: *mut type_defs::SDL_Joystick, axis: i32) -> i16 {
         unimplemented!("joystick_get_axis");
@@ -300,10 +334,24 @@ impl Window for WaylandWindow {
         unimplemented!("joystick_open");
     }
     fn num_joysticks(&mut self) -> i32 {
-        unimplemented!("num_joysticks");
+        println!("num_joysticks");
+        return 0;
     }
     fn poll_event(&mut self, event: *mut type_defs::SDL_Event) -> i32 {
-        unimplemented!("poll_event");
+        self.event_loop();
+        if let Some(event) = unsafe { event.as_mut() } {
+            if !self.state.running {
+                self.state.quit_attempts += 1;
+                event.type_ = SDL_EventType::SDL_QUIT as u8;
+                if self.state.quit_attempts >= 10 {
+                    println!(
+                        "WARNING: had to exit manually because the application didn't respond to SDL_QUIT."
+                    );
+                    exit(0);
+                }
+            }
+        }
+        return 0;
     }
 
     fn rwfrom_file(&mut self, file: &str, mode: &str) -> *mut type_defs::SDL_RWops {
@@ -338,13 +386,14 @@ impl Window for WaylandWindow {
         }))
     }
     fn show_cursor(&mut self, toggle: i32) -> i32 {
-        unimplemented!("show_cursor");
+        println!("show_cursor");
+        return 0;
     }
     fn warp_mouse(&mut self, x: u16, y: u16) {
-        unimplemented!("warp_mouse");
+        println!("warp_mouse");
     }
     fn wm_set_caption(&mut self, title: &str, icon: &str) {
-        unimplemented!("wm_set_caption");
+        self.state.xdg_top_level().set_title(title.into());
     }
 }
 delegate_noop!(WaylandState: ignore WlCompositor);
