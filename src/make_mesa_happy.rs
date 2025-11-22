@@ -3,7 +3,10 @@
 #![allow(dead_code)]
 #![allow(non_snake_case)]
 #![allow(unused_variables)]
-use std::os::raw::{c_ulong, c_void};
+use std::{
+    ffi::c_int,
+    os::raw::{c_ulong, c_void},
+};
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn compressBound(sourceLen: c_ulong) -> c_ulong {
@@ -15,5 +18,10 @@ pub unsafe extern "C" fn gzopen64(
     path: *const ::std::os::raw::c_char,
     mode: *const ::std::os::raw::c_char,
 ) -> *mut c_void {
+    panic!();
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn gzdirect(file: *mut c_void) -> c_int {
     panic!();
 }

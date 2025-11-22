@@ -12,7 +12,8 @@ parking_lot = "0.12.5"
 tempfile = "3.23.0"
 wayland-client = "0.31.11"
 wayland-egl = "0.32.8"
-wayland-protocols = { version = "0.32.9", features = ["client", "wayland-client"] }
+wayland-protocols = { version = "0.32.9", features = ["client", "staging", "unstable", "wayland-client"] }
+wayland-sys = { version = "0.31.7", features = ["client", "dlopen"] }
 
 [lib]
 crate-type =["cdylib"]

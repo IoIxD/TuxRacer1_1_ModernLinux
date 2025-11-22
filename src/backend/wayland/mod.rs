@@ -8,31 +8,41 @@ use std::{
 mod registry;
 mod seat;
 mod xdg;
+mod zxdg;
 
 use gl::COLOR_BUFFER_BIT;
 use wayland_client::{
-    Connection, EventQueue, QueueHandle,
+    Connection, EventQueue, Proxy, QueueHandle,
     backend::WaylandError,
     delegate_noop,
     protocol::{
-        wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_display::WlDisplay, wl_shm::WlShm,
-        wl_shm_pool::WlShmPool, wl_surface::WlSurface,
+        wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_display::WlDisplay,
+        wl_region::WlRegion, wl_shm::WlShm, wl_shm_pool::WlShmPool, wl_surface::WlSurface,
     },
 };
 use wayland_egl::WlEglSurface;
+use wayland_sys::{
+    client::{wayland_client_handle, wl_display},
+    ffi_dispatch,
+};
 
 use crate::{
     backend::Window,
-    egl::{EGL, EGL_SUCCESS, EGL_TRUE, EGLBoolean, EGLDisplay, EGLSurface, wl_buffer},
+    egl::{EGL, EGL_TRUE, EGLBoolean, EGLDisplay, EGLSurface, wl_buffer},
     type_defs::{self, SDL_Rect, SDL_Surface},
 };
-use wayland_protocols::xdg::shell::client::{
-    xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel, xdg_wm_base::XdgWmBase,
+use wayland_protocols::xdg::{
+    decoration::zv1::client::{
+        zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+        zxdg_toplevel_decoration_v1::{Mode, ZxdgToplevelDecorationV1},
+    },
+    shell::client::{xdg_surface::XdgSurface, xdg_toplevel::XdgToplevel, xdg_wm_base::XdgWmBase},
 };
 
 #[derive(Default)]
 pub struct WaylandState {
-    base_surface: Option<WlSurface>,
+    compositor: Option<WlCompositor>,
+    compositor_surface: Option<WlSurface>,
     wm_base: Option<XdgWmBase>,
     xdg_surface: Option<XdgSurface>,
     xdg_top_level: Option<XdgToplevel>,
@@ -42,6 +52,10 @@ pub struct WaylandState {
     configured: bool,
     native_display: Option<WlDisplay>,
     buffer: Option<WlBuffer>,
+
+    // note: this protocols are unstable and thus shouldn't have getters that assume they're there.
+    decoration_manager: Option<ZxdgDecorationManagerV1>,
+    toplevel_decoration: Option<ZxdgToplevelDecorationV1>,
 }
 
 impl WaylandState {
@@ -95,12 +109,24 @@ impl WaylandWindow {
             }
         }
 
+        // If you're able to do this in the safe API then I'm simply not finding out where.
+        if let Some(display) = self.state.native_display.as_ref() {
+            unsafe {
+                ffi_dispatch!(
+                    wayland_client_handle(),
+                    wl_display_dispatch_pending,
+                    display.id().as_ptr() as *mut wl_display
+                );
+            }
+        }
+
         if let Some(guard) = self.event_queue.prepare_read() {
             let read = guard.read().unwrap();
             if read <= 0 {
+                print!("read 0 events\r");
                 return;
             }
-            println!("{}", read);
+            print!("read {} events\t\t\t\t\n", read);
         }
 
         self.event_queue.dispatch_pending(&mut self.state).unwrap();
@@ -108,37 +134,63 @@ impl WaylandWindow {
 
     fn sanity_test(&mut self) {
         loop {
+            self.event_loop();
+
             unsafe {
                 gl::ClearColor(1.0, 0.0, 0.0, 1.0);
                 gl::Clear(COLOR_BUFFER_BIT);
                 gl::Flush();
 
                 self.state
-                    .egl
-                    .as_mut()
-                    .unwrap()
+                    .egl()
                     .swap_buffers(
                         self.state.display,
-                        self.state.egl_surface.as_mut().unwrap().ptr() as EGLSurface,
+                        self.state.egl_surface().ptr() as EGLSurface,
                     )
                     .unwrap();
-                self.state.base_surface.as_mut().unwrap().commit();
+                self.state.compositor_surface().commit();
             };
-            self.event_loop();
         }
     }
 }
 
 impl WaylandState {
+    pub fn wm_base(&self) -> &XdgWmBase {
+        self.wm_base.as_ref().unwrap()
+    }
+    pub fn compositor(&self) -> &WlCompositor {
+        self.compositor.as_ref().unwrap()
+    }
+    pub fn compositor_surface(&self) -> &WlSurface {
+        self.compositor_surface.as_ref().unwrap()
+    }
+    pub fn egl(&self) -> &EGL {
+        self.egl.as_ref().unwrap()
+    }
+    pub fn egl_surface(&self) -> &WlEglSurface {
+        self.egl_surface.as_ref().unwrap()
+    }
+    pub fn native_display(&self) -> &WlDisplay {
+        self.native_display.as_ref().unwrap()
+    }
+
     fn init_xdg_surface(&mut self, qh: &QueueHandle<WaylandState>) {
         let wm_base = self.wm_base.as_ref().unwrap();
-        let base_surface = self.base_surface.as_ref().unwrap();
+        let compositor_surface = self.compositor_surface.as_ref().unwrap();
 
-        let xdg_surface = wm_base.get_xdg_surface(base_surface, qh, ());
+        let xdg_surface = wm_base.get_xdg_surface(compositor_surface, qh, ());
         let toplevel = xdg_surface.get_toplevel(qh, ());
         toplevel.set_title("A fantastic window!".into());
 
-        base_surface.commit();
+        if let Some(decoration_manager) = self.decoration_manager.as_mut() {
+            let toplevel_decoration = decoration_manager.get_toplevel_decoration(&toplevel, qh, ());
+
+            toplevel_decoration.set_mode(Mode::ServerSide);
+
+            self.toplevel_decoration = Some(toplevel_decoration);
+        }
+
+        compositor_surface.commit();
 
         self.xdg_surface = Some(xdg_surface);
         self.xdg_top_level = Some(toplevel);
@@ -189,7 +241,7 @@ impl Window for WaylandWindow {
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
         let (surface, egl, display) = self.state.wait_for_egl();
-        // self.sanity_test();
+        self.sanity_test();
 
         let attr = match attr {
             type_defs::SDL_GLattr::RED_SIZE => gl::RENDERBUFFER_RED_SIZE,
@@ -298,8 +350,7 @@ impl Window for WaylandWindow {
 }
 delegate_noop!(WaylandState: ignore WlCompositor);
 delegate_noop!(WaylandState: ignore WlShm);
+delegate_noop!(WaylandState: ignore WlRegion);
 delegate_noop!(WaylandState: ignore WlBuffer);
 delegate_noop!(WaylandState: ignore WlShmPool);
-
-// for now
 delegate_noop!(WaylandState: ignore WlSurface);

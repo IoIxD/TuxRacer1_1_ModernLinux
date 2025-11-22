@@ -134,13 +134,21 @@ impl EGL {
             num_config: *mut EGLint,
         ) -> EGLBoolean,
     );
+    gen_func!(get_config_attrib, (
+            dpy: EGLDisplay,
+            config: EGLConfig,
+            attribute: EGLint,
+            value: *mut EGLint,
+        ) -> EGLBoolean,
+    );
 
     gen_func!(get_current_display, () -> EGLDisplay,
     );
 
     gen_func!(initialize, (dpy: EGLDisplay, major: *mut EGLint, minor: *mut EGLint) -> EGLBoolean,
     );
-
+    gen_func!(bind_api, (version: u32) -> EGLBoolean,
+    );
     gen_func!(make_current, (
             dpy: EGLDisplay,
             draw: EGLSurface,
@@ -852,7 +860,7 @@ impl EGLSymbolTable {
             create_window_surface: func_load!(get_proc_address, c"eglCreateWindowSurface"),
             destroy_context: func_load!(get_proc_address, c"eglDestroyContext"),
             destroy_surface: func_load!(get_proc_address, c"eglDestroySurface"),
-            get_config_attrib: func_load!(get_proc_address, c"eglGetConfigAttric"),
+            get_config_attrib: func_load!(get_proc_address, c"eglGetConfigAttrib"),
             get_configs: func_load!(get_proc_address, c"eglGetConfigs"),
             get_current_display: func_load!(get_proc_address, c"eglGetCurrentDisplay"),
             get_current_surface: func_load!(get_proc_address, c"eglGetCurrentSurface"),

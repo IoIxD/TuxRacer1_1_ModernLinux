@@ -1,7 +1,7 @@
 use std::{fs::File, os::fd::AsFd};
 
 use wayland_client::{
-    Connection, Dispatch, QueueHandle,
+    Connection, Dispatch, Proxy, QueueHandle,
     protocol::{
         wl_compositor,
         wl_registry::{self},
@@ -9,7 +9,11 @@ use wayland_client::{
         wl_shm::{self},
     },
 };
-use wayland_protocols::xdg::shell::client::xdg_wm_base;
+use wayland_egl::WlEglSurface;
+use wayland_protocols::xdg::{
+    decoration::zv1::client::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+    shell::client::xdg_wm_base,
+};
 
 use crate::backend::wayland::WaylandState;
 
@@ -31,7 +35,17 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
                     let compositor =
                         registry.bind::<wl_compositor::WlCompositor, _, _>(name, 1, qh, ());
                     let surface = compositor.create_surface(qh, ());
-                    state.base_surface = Some(surface);
+
+                    let region = compositor.create_region(qh, ());
+                    region.add(0, 0, 640, 480);
+                    surface.set_opaque_region(Some(&region));
+
+                    let egl_surface = WlEglSurface::new(surface.id(), 640, 480).unwrap();
+                    assert!(!egl_surface.ptr().is_null());
+
+                    state.compositor = Some(compositor);
+                    state.compositor_surface = Some(surface);
+                    state.egl_surface = Some(egl_surface);
 
                     if state.wm_base.is_some() && state.xdg_surface.is_none() {
                         state.init_xdg_surface(qh);
@@ -55,12 +69,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
                         (),
                     );
                     state.buffer = Some(buffer.clone());
-
-                    if state.configured {
-                        let surface = state.base_surface.as_ref().unwrap();
-                        surface.attach(Some(&buffer), 0, 0);
-                        surface.commit();
-                    }
                 }
                 "wl_seat" => {
                     registry.bind::<wl_seat::WlSeat, _, _>(name, 1, qh, ());
@@ -69,11 +77,17 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
                     let wm_base = registry.bind::<xdg_wm_base::XdgWmBase, _, _>(name, 1, qh, ());
                     state.wm_base = Some(wm_base);
 
-                    if state.base_surface.is_some() && state.xdg_surface.is_none() {
+                    if state.compositor_surface.is_some() && state.xdg_surface.is_none() {
                         state.init_xdg_surface(qh);
                     }
                 }
-                _ => {}
+                "zxdg_decoration_manager_v1" => {
+                    state.decoration_manager =
+                        Some(registry.bind::<ZxdgDecorationManagerV1, _, _>(name, 1, qh, ()));
+                }
+                _ => {
+                    println!("[unhandled] {}", &interface[..]);
+                }
             }
         }
     }
