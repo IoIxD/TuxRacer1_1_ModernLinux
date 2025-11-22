@@ -935,34 +935,11 @@ pub struct SDL_RWops {
     pub close: ::std::option::Option<
         unsafe extern "C" fn(context: *mut SDL_RWops) -> ::std::os::raw::c_int,
     >,
-    pub type_: u32,
-    pub hidden: SDL_RWops__bindgen_ty_1,
+    // We hijack the fields that SDL normally uses for "hidden" things (using a union type?) to just store a singular pointer.
+    pub inner: *mut c_void,
+    pub padding: [u8; 12],
 }
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union SDL_RWops__bindgen_ty_1 {
-    pub stdio: SDL_RWops__bindgen_ty_1__bindgen_ty_1,
-    pub mem: SDL_RWops__bindgen_ty_1__bindgen_ty_2,
-    pub unknown: SDL_RWops__bindgen_ty_1__bindgen_ty_3,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SDL_RWops__bindgen_ty_1__bindgen_ty_1 {
-    pub autoclose: ::std::os::raw::c_int,
-    pub fp: *mut c_void,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SDL_RWops__bindgen_ty_1__bindgen_ty_2 {
-    pub base: *mut u8,
-    pub here: *mut u8,
-    pub stop: *mut u8,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct SDL_RWops__bindgen_ty_1__bindgen_ty_3 {
-    pub data1: *mut ::std::os::raw::c_void,
-}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct SDL_Surface {

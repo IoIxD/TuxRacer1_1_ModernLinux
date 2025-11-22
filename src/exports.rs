@@ -6,7 +6,7 @@
 
 use std::ffi::{CStr, c_char, c_int, c_void};
 
-use crate::{sigsegv_handler, type_defs, window};
+use crate::{file::new_sdl_rwops, sigsegv_handler, type_defs, window};
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_Delay(ms: u32) {
@@ -110,16 +110,6 @@ pub unsafe extern "C" fn SDL_PollEvent(event: *mut type_defs::SDL_Event) -> c_in
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_Quit() {
     window().lock().quit()
-}
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SDL_RWFromFile(
-    file: *const c_char,
-    mode: *const c_char,
-) -> *mut type_defs::SDL_RWops {
-    window().lock().rwfrom_file(
-        &CStr::from_ptr(file).to_string_lossy(),
-        &CStr::from_ptr(mode).to_string_lossy(),
-    )
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_SetVideoMode(

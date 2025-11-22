@@ -510,9 +510,6 @@ impl Window for WaylandWindow {
         return 0;
     }
 
-    fn rwfrom_file(&mut self, file: &str, mode: &str) -> *mut type_defs::SDL_RWops {
-        unimplemented!("rwfrom_file");
-    }
     fn set_video_mode(
         &mut self,
         width: i32,
