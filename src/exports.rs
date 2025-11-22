@@ -4,10 +4,7 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 
-use std::{
-    ffi::{CStr, c_char, c_int, c_void},
-    process::exit,
-};
+use std::ffi::{CStr, c_char, c_int, c_void};
 
 use crate::{sigsegv_handler, type_defs, window};
 

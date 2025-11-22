@@ -1,16 +1,6 @@
-use std::{
-    ffi::CString,
-    os::raw::c_void,
-    process::exit,
-    ptr::{null, null_mut},
-};
+use std::{ffi::CString, os::raw::c_void, ptr::null_mut};
 
-use wayland_client::{
-    Dispatch, Proxy,
-    backend::ObjectId,
-    protocol::{wl_region::WlRegion, wl_surface::WlSurface},
-};
-use wayland_egl::WlEglSurface;
+use wayland_client::{Dispatch, Proxy};
 use wayland_protocols::xdg::shell::client::{
     xdg_surface::{self, XdgSurface},
     xdg_toplevel::XdgToplevel,
@@ -209,7 +199,7 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
 
                 state.configured = true;
             },
-            _ => todo!(),
+            _ => {}
         }
     }
 }

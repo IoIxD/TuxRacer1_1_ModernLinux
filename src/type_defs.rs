@@ -824,6 +824,7 @@ pub struct SDL_Event__bindgen_ty_2 {
 #[derive(Debug, Copy, Clone)]
 pub struct SDL_Event__bindgen_ty_3 {
     pub type_: u8,
+    pub padding: u8,
     pub state: u8,
     pub x: u16,
     pub y: u16,
@@ -834,6 +835,7 @@ pub struct SDL_Event__bindgen_ty_3 {
 #[derive(Debug, Copy, Clone)]
 pub struct SDL_Event__bindgen_ty_4 {
     pub type_: u8,
+    pub padding: u8,
     pub button: u8,
     pub state: u8,
     pub x: u16,
