@@ -94,8 +94,6 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     8,
                     EGL_BLUE_SIZE as i32,
                     8,
-                    EGL_ALPHA_SIZE as i32,
-                    1,
                     EGL_BUFFER_SIZE as i32,
                     8,
                     EGL_STENCIL_SIZE as i32,
