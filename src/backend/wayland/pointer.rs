@@ -25,6 +25,11 @@ impl Dispatch<WlPointer, ()> for WaylandState {
                 state.last_pointer_x = surface_x;
                 state.last_pointer_y = surface_y;
                 state.pointer_serial = serial;
+
+                proxy.set_cursor(serial, None, 0, 0);
+            }
+            Event::Leave { serial, surface } => {
+                proxy.set_cursor(serial, Some(&surface), 0, 0);
             }
             Event::Motion {
                 time,

@@ -540,7 +540,8 @@ impl Window for WaylandWindow {
         return &mut self.fake_surface;
     }
     fn show_cursor(&mut self, toggle: i32) -> i32 {
-        println!("show_cursor");
+        // The game calls this before Wayland's pointer is set up, and does so once.
+        // So we just hide the cursor over there.
         return 0;
     }
     fn warp_mouse(&mut self, x: u16, y: u16) {
