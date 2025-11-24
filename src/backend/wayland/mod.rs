@@ -4,9 +4,9 @@ use std::{
     io::ErrorKind,
     process::exit,
     ptr::{null, null_mut},
-    time::SystemTime,
 };
 
+mod fifo;
 mod keyboard;
 mod pointer;
 mod seat;
@@ -36,11 +36,14 @@ use wayland_client::{
     },
 };
 use wayland_egl::WlEglSurface;
-use wayland_protocols::xdg::{
-    shell::client::xdg_wm_base,
-    toplevel_icon::v1::client::{
-        xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1,
-        xdg_toplevel_icon_v1::XdgToplevelIconV1,
+use wayland_protocols::{
+    wp::fifo::v1::client::{wp_fifo_manager_v1::WpFifoManagerV1, wp_fifo_v1::WpFifoV1},
+    xdg::{
+        shell::client::xdg_wm_base,
+        toplevel_icon::v1::client::{
+            xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1,
+            xdg_toplevel_icon_v1::XdgToplevelIconV1,
+        },
     },
 };
 use wayland_sys::{
@@ -105,6 +108,8 @@ pub struct WaylandState {
     pointer_warp: Option<WpPointerWarpV1>,
     toplevel_icon_manager: Option<XdgToplevelIconManagerV1>,
     toplevel_icon: Option<XdgToplevelIconV1>,
+    fifo_manager: Option<WpFifoManagerV1>,
+    fifo: Option<WpFifoV1>,
 }
 
 impl WaylandState {
@@ -173,6 +178,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
                     state.toplevel_icon_manager =
                         Some(registry.bind::<XdgToplevelIconManagerV1, _, _>(name, 1, qh, ()))
                 }
+                "wp_fifo_manager_v1" => {
+                    state.fifo_manager =
+                        Some(registry.bind::<WpFifoManagerV1, _, _>(name, 1, qh, ()));
+                }
                 _ => {
                     println!("[unhandled] {}", &interface[..]);
                 }
@@ -227,7 +236,7 @@ impl WaylandWindow {
         let video_info = SDL_VideoInfo {
             _bitfield_align_1: [],
             _bitfield_1: unsafe { std::mem::transmute(255_u8) },
-            blit_fill: 0,
+            blit_fill: 255,
             video_mem: 2048000,
             vfmt: unsafe { std::mem::transmute(0) },
         };
@@ -270,7 +279,7 @@ impl WaylandWindow {
             if read <= 0 {
                 return;
             }
-            print!("read {} events\t\t\t\t\n", read);
+            // print!("read {} events\t\t\t\t\n", read);
         }
 
         self.event_queue.dispatch_pending(&mut self.state).unwrap();
@@ -368,10 +377,10 @@ impl Window for WaylandWindow {
     }
 
     fn delay(&mut self, ms: u32) {
-        let time = SystemTime::now();
-        while time.elapsed().unwrap().as_millis() <= ms as u128 {
-            self.event_loop();
-        }
+        // let time = SystemTime::now();
+        // while time.elapsed().unwrap().as_millis() <= ms as u128 {
+        //     self.event_loop();
+        // }
     }
     fn enable_key_repeat(&mut self, delay: i32, interval: i32) -> i32 {
         return 0;
@@ -430,12 +439,24 @@ impl Window for WaylandWindow {
     }
     fn gl_swap_buffers(&mut self) {
         let egl = self.state.egl();
+        if let Some(fifo) = self.state.fifo.as_ref() {
+            fifo.wait_barrier();
+        }
+
         unsafe {
             self.state.panic_on_error(
                 "Error swapping buffers",
                 egl.swap_buffers(self.state.display, self.state.native_surface)
                     .unwrap(),
             );
+
+            if let Some(fifo) = self.state.fifo.as_ref() {
+                // Since we have a FIFO, its safe to set the swap interval to 0, turning off vsync
+                self.state.panic_on_error(
+                    "Error swapping buffers",
+                    egl.swap_interval(self.state.display, 0).unwrap(),
+                );
+            }
         }
     }
 

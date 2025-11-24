@@ -211,6 +211,15 @@ impl Dispatch<XdgSurface, ()> for WaylandState {
                     }
                 });
 
+                if let Some(manager) = state.fifo_manager.as_ref() {
+                    let surface = state.compositor_surface();
+                    let fifo = manager.get_fifo(surface, &qhandle, ());
+
+                    fifo.set_barrier();
+
+                    state.fifo = Some(fifo);
+                }
+
                 state.display = display;
                 state.native_surface = surface;
 
