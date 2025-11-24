@@ -1,10 +1,23 @@
-use std::{ffi::CString, os::raw::c_void, ptr::null_mut};
+use std::{
+    env::current_dir,
+    ffi::CString,
+    io::Write,
+    os::{fd::AsFd, raw::c_void},
+    ptr::null_mut,
+};
 
-use wayland_client::{Dispatch, Proxy};
-use wayland_protocols::xdg::shell::client::{
-    xdg_surface::{self, XdgSurface},
-    xdg_toplevel::XdgToplevel,
-    xdg_wm_base::{self, XdgWmBase},
+use image::{DynamicImage, ImageBuffer, ImageReader};
+use wayland_client::{Dispatch, Proxy, delegate_noop, protocol::wl_shm};
+use wayland_protocols::xdg::{
+    shell::client::{
+        xdg_surface::{self, XdgSurface},
+        xdg_toplevel::XdgToplevel,
+        xdg_wm_base::{self, XdgWmBase},
+    },
+    toplevel_icon::v1::client::{
+        xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1,
+        xdg_toplevel_icon_v1::XdgToplevelIconV1,
+    },
 };
 
 use crate::{
@@ -239,3 +252,69 @@ impl Dispatch<XdgWmBase, ()> for WaylandState {
         }
     }
 }
+
+impl wayland_client::Dispatch<XdgToplevelIconManagerV1, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        manager: &XdgToplevelIconManagerV1,
+        event: <XdgToplevelIconManagerV1 as Proxy>::Event,
+        data: &(),
+        conn: &wayland_client::Connection,
+        qhandle: &wayland_client::QueueHandle<Self>,
+    ) {
+        if let Some(xdg_top_level) = state.xdg_top_level.as_mut() {
+            if let Some(wl_shm) = state.wl_shm.as_mut() {
+                if let None = state.toplevel_icon {
+                    // The original Linux version of the game didn't actually set the icon it seems. So
+                    // we fudge something by loading the lives image and cropping it, since that's roughly what it is
+                    // on Windows.
+                    //
+                    // TODO: Really? It didn't? I'm not finding anything in the install directory and
+                    // when the game sets the 'icon path' it uses the same string as the title (down to the same pointer).
+                    // Maybe get an old Linux VM set up one day to confirm this.
+
+                    match ImageReader::open(
+                        current_dir().unwrap().join("textures").join("tuxlife.png"),
+                    ) {
+                        Ok(img) => {
+                            let icon = manager.create_icon(&qhandle, ());
+
+                            let mut img = img.decode().unwrap();
+                            let (init_w, init_h) = (32, 32);
+                            img = img.crop(0, 0, init_w, init_h);
+                            // The image's hue is wrong when we end up writing it to the wl_shm.
+                            // TODO: Why
+                            img = img.huerotate(140);
+
+                            let mut file = tempfile::tempfile().unwrap();
+                            file.write(img.as_bytes()).unwrap();
+                            let pool = wl_shm.create_pool(
+                                file.as_fd(),
+                                (init_w * init_h * 4) as i32,
+                                qhandle,
+                                (),
+                            );
+                            let buffer = pool.create_buffer(
+                                0,
+                                init_w as i32,
+                                init_h as i32,
+                                (init_w * 4) as i32,
+                                wl_shm::Format::Argb8888,
+                                qhandle,
+                                (),
+                            );
+
+                            icon.add_buffer(&buffer, 1);
+
+                            manager.set_icon(&xdg_top_level, Some(&icon));
+                        }
+                        Err(err) => {
+                            println!("error setting icon: {}", err);
+                        }
+                    };
+                }
+            }
+        }
+    }
+}
+delegate_noop!(WaylandState: ignore XdgToplevelIconV1);

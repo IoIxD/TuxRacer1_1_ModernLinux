@@ -17,8 +17,13 @@ use wayland_client::{
     backend::WaylandError,
     delegate_noop,
     protocol::{
-        wl_buffer::WlBuffer, wl_compositor::WlCompositor, wl_display::WlDisplay,
-        wl_pointer::WlPointer, wl_region::WlRegion, wl_shm::WlShm, wl_shm_pool::WlShmPool,
+        wl_buffer::WlBuffer,
+        wl_compositor::WlCompositor,
+        wl_display::WlDisplay,
+        wl_pointer::WlPointer,
+        wl_region::WlRegion,
+        wl_shm::{self, WlShm},
+        wl_shm_pool::WlShmPool,
         wl_surface::WlSurface,
     },
 };
@@ -31,7 +36,13 @@ use wayland_client::{
     },
 };
 use wayland_egl::WlEglSurface;
-use wayland_protocols::xdg::shell::client::xdg_wm_base;
+use wayland_protocols::xdg::{
+    shell::client::xdg_wm_base,
+    toplevel_icon::v1::client::{
+        xdg_toplevel_icon_manager_v1::XdgToplevelIconManagerV1,
+        xdg_toplevel_icon_v1::XdgToplevelIconV1,
+    },
+};
 use wayland_sys::{
     client::{wayland_client_handle, wl_display},
     ffi_dispatch,
@@ -63,6 +74,7 @@ use wayland_protocols::{
 pub struct WaylandState {
     compositor: Option<WlCompositor>,
     compositor_surface: Option<WlSurface>,
+    wl_shm: Option<WlShm>,
     wm_base: Option<XdgWmBase>,
     xdg_surface: Option<XdgSurface>,
     xdg_top_level: Option<XdgToplevel>,
@@ -91,6 +103,8 @@ pub struct WaylandState {
     decoration_manager: Option<ZxdgDecorationManagerV1>,
     toplevel_decoration: Option<ZxdgToplevelDecorationV1>,
     pointer_warp: Option<WpPointerWarpV1>,
+    toplevel_icon_manager: Option<XdgToplevelIconManagerV1>,
+    toplevel_icon: Option<XdgToplevelIconV1>,
 }
 
 impl WaylandState {
@@ -133,6 +147,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
                         state.init_xdg_surface(qh);
                     }
                 }
+                "wl_shm" => {
+                    state.wl_shm = Some(registry.bind::<wl_shm::WlShm, _, _>(name, 1, qh, ()));
+                }
                 "wl_seat" => {
                     registry.bind::<wl_seat::WlSeat, _, _>(name, 1, qh, ());
                 }
@@ -151,6 +168,10 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
                 "wp_pointer_warp_v1" => {
                     state.pointer_warp =
                         Some(registry.bind::<WpPointerWarpV1, _, _>(name, 1, qh, ()))
+                }
+                "xdg_toplevel_icon_manager_v1" => {
+                    state.toplevel_icon_manager =
+                        Some(registry.bind::<XdgToplevelIconManagerV1, _, _>(name, 1, qh, ()))
                 }
                 _ => {
                     println!("[unhandled] {}", &interface[..]);
@@ -560,6 +581,8 @@ impl Window for WaylandWindow {
     }
     fn wm_set_caption(&mut self, title: &str, icon: &str) {
         self.state.xdg_top_level().set_title(title.into());
+
+        // we set the icon in xdg.rs
     }
 }
 delegate_noop!(WaylandState: ignore WlCompositor);
