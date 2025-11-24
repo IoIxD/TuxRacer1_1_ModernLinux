@@ -4,6 +4,8 @@ Revised installer and custom SDL 1.2 translation layer for getting the commercia
 
 <img width="1919" height="931" alt="image" src="https://github.com/user-attachments/assets/e1b397f5-4534-453e-b00b-af891d401458" />
 
+**Currently this only supports Wayland** due to my choice to forgo any libraries and write directly in it, and for that matter it won't have window decorations on GNOME because it relies on the XDG Shell protocol that GNOME doesn't want to support. It's recommended you use KDE. X11 support may be added in the future.
+
 ## Usage
 Download the [zip](https://github.com/IoIxD/TuxRacer1_1_ModernLinux/releases) containing `setup.sh` and the `.so` file, and run the shell script. After it finishes installing, take note of any warnings/hints it gives you, including the instruction to move `libSDL-1.2.so.0` to the game's folder and to replace the game's copy of SDL mixer with a copy of SDL2 Mixer.
 
