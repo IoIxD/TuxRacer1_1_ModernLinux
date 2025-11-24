@@ -14,7 +14,7 @@ A *known issue* I've observed on my AMD system is polygon corruption and an even
 ## Checklist
 - [x] Basic window
 - [x] Keyboard/mouse support
-- [ ] [Fullscreen](https://github.com/IoIxD/TuxRacer1_1_ModernLinux/issues)
+- [ ] [Fullscreen](https://github.com/IoIxD/TuxRacer1_1_ModernLinux/issues/1/)
 - [ ] X11 support
 - [ ] Gamepad support
 - [ ] HDR support?
