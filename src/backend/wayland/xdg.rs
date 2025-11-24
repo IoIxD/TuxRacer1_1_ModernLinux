@@ -243,6 +243,24 @@ impl Dispatch<XdgToplevel, ()> for WaylandState {
             wayland_protocols::xdg::shell::client::xdg_toplevel::Event::Close => {
                 state.running = false;
             }
+            wayland_protocols::xdg::shell::client::xdg_toplevel::Event::Configure {
+                width,
+                height,
+                states,
+            } => {
+                // if !state.resize_cycle {
+                //     println!("resized to {} {}", width, height);
+                //     state.egl_surface().resize(width, height, 0, 0);
+
+                //     state.resize_happened = true;
+                //     state.resized_x = width;
+                //     state.resized_y = height;
+                // }
+            }
+            // wayland_protocols::xdg::shell::client::xdg_toplevel::Event::WmCapabilities {
+            //     capabilities,
+            // } => todo!(),
+            // _ => todo!(),
             _ => {}
         }
     }

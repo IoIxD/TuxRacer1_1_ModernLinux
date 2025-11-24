@@ -18,7 +18,7 @@ pub trait Window {
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32;
     fn gl_get_proc_address(&mut self, proc_: *const c_char) -> *mut c_void;
     fn gl_set_attribute(&mut self, attr: type_defs::SDL_GLattr, value: i32) -> i32;
-    fn gl_swap_buffers(&mut self);
+    fn gl_swap_buffers(&self);
 
     fn joystick_event_state(&mut self, state: i32) -> i32;
     fn joystick_get_axis(&mut self, joystick: *mut type_defs::SDL_Joystick, axis: i32) -> i16;

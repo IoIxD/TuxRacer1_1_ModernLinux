@@ -4,6 +4,7 @@ use std::{
     io::ErrorKind,
     process::exit,
     ptr::{null, null_mut},
+    time::SystemTime,
 };
 
 mod fifo;
@@ -101,6 +102,11 @@ pub struct WaylandState {
     xkb_keymap: Option<Keymap>,
     xkb_state: Option<State>,
     keynum: usize,
+
+    // resize_happened: bool,
+    // resized_x: i32,
+    // resized_y: i32,
+    // resize_cycle: bool,
 
     // below protocols are staging/unstable and thus shouldn't have getters that assume they're there.
     decoration_manager: Option<ZxdgDecorationManagerV1>,
@@ -377,10 +383,10 @@ impl Window for WaylandWindow {
     }
 
     fn delay(&mut self, ms: u32) {
-        // let time = SystemTime::now();
-        // while time.elapsed().unwrap().as_millis() <= ms as u128 {
-        //     self.event_loop();
-        // }
+        let time = SystemTime::now();
+        while time.elapsed().unwrap().as_millis() <= ms as u128 {
+            self.event_loop();
+        }
     }
     fn enable_key_repeat(&mut self, delay: i32, interval: i32) -> i32 {
         return 0;
@@ -437,7 +443,7 @@ impl Window for WaylandWindow {
         self.gl_attrs[attr as usize] = value;
         0
     }
-    fn gl_swap_buffers(&mut self) {
+    fn gl_swap_buffers(&self) {
         let egl = self.state.egl();
         if let Some(fifo) = self.state.fifo.as_ref() {
             fifo.wait_barrier();
@@ -487,8 +493,8 @@ impl Window for WaylandWindow {
     }
     fn poll_event(&mut self, event: *mut type_defs::SDL_Event) -> i32 {
         self.event_loop();
+
         unsafe {
-            // pointer events
             if self.state.pointer_events.len() >= 1 {
                 use wayland_client::protocol::wl_pointer::Event;
                 if let Some(ev) = self.state.pointer_events.pop() {
@@ -548,6 +554,17 @@ impl Window for WaylandWindow {
                     (*event).key.keysym = ev.1;
                 }
                 return 1;
+            // } else if self.state.resize_happened {
+            //     if !self.state.resize_cycle {
+            //         (*event).resize.type_ = SDL_EventType::SDL_VIDEORESIZE as u8;
+            //         (*event).resize.w = self.state.resized_x;
+            //         (*event).resize.h = self.state.resized_y;
+            //         self.state.resize_happened = false;
+            //         self.state.resize_cycle = true;
+            //         return 1;
+            //     } else {
+            //         self.state.resize_cycle = false;
+            //     }
             } else if !self.state.running {
                 self.state.quit_attempts += 1;
                 (*event).quit.type_ = SDL_EventType::SDL_QUIT as u8;
@@ -560,6 +577,7 @@ impl Window for WaylandWindow {
                 return 1;
             }
         }
+
         return 0;
     }
 
@@ -572,12 +590,22 @@ impl Window for WaylandWindow {
     ) -> *mut type_defs::SDL_Surface {
         self.state.wait_for_egl();
 
-        self.state.egl_surface().resize(width, height, 0, 0);
-
         self.fake_surface.w = width;
         self.fake_surface.h = height;
         self.fake_surface.clip_rect.w = height;
         self.fake_surface.clip_rect.h = height;
+
+        let xdg_top_level = self.state.xdg_top_level();
+        xdg_top_level.set_min_size(width, height);
+        xdg_top_level.set_max_size(width, height);
+        self.state.egl_surface().resize(width, height, 0, 0);
+
+        // TODO: find out how to make fullscreen work
+        // if (flags & 0x80000000) == 0x80000000 {
+        //     xdg_top_level.set_fullscreen(None);
+        // } else {
+        //     xdg_top_level.unset_fullscreen();
+        // }
 
         return &mut self.fake_surface;
     }

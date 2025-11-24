@@ -20,7 +20,6 @@ mod make_mesa_happy;
 use core::panic;
 use std::{
     ffi::{CStr, c_int},
-    process::exit,
     sync::LazyLock,
 };
 
