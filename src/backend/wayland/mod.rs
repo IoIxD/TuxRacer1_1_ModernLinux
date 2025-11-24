@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 use std::{
-    ffi::{c_char, c_void},
+    ffi::{CStr, c_char, c_void},
     io::ErrorKind,
     process::exit,
     ptr::{null, null_mut},
@@ -36,13 +36,14 @@ use wayland_sys::{
     client::{wayland_client_handle, wl_display},
     ffi_dispatch,
 };
+use xkbcommon_rs::{Keymap, State};
 
 use crate::{
     backend::Window,
     egl::{EGL, EGL_TRUE, EGLBoolean, EGLDisplay, EGLSurface},
     type_defs::{
-        self, SDL_EventType, SDL_GLattr, SDL_Rect, SDL_Surface, SDL_VideoInfo, SDL_keysym, SDLKey,
-        SDLKey_SDLK_0, SDLKey_SDLK_LAST, SDLKey_SDLK_UP, SDLMod_KMOD_NONE,
+        self, SDL_EventType, SDL_Rect, SDL_Surface, SDL_VideoInfo, SDL_keysym, SDLKey,
+        SDLKey_SDLK_LAST, SDLMod_KMOD_NONE,
     },
 };
 use wayland_protocols::{
@@ -81,6 +82,10 @@ pub struct WaylandState {
     last_pointer_y: f64,
 
     keys: Vec<SDLKey>,
+    active_keysyms: Vec<(u32, SDL_keysym)>,
+    xkb_keymap: Option<Keymap>,
+    xkb_state: Option<State>,
+    keynum: usize,
 
     // below protocols are staging/unstable and thus shouldn't have getters that assume they're there.
     decoration_manager: Option<ZxdgDecorationManagerV1>,
@@ -225,7 +230,6 @@ impl WaylandWindow {
             if let WaylandError::Io(err) = err {
                 if err.kind() == ErrorKind::WouldBlock {}
             } else {
-                println!("{}", err);
             }
         }
 
@@ -336,8 +340,6 @@ impl Window for WaylandWindow {
             self.event_loop();
         }
 
-        println!("init done");
-
         0
     }
     fn quit(&mut self) {
@@ -351,25 +353,22 @@ impl Window for WaylandWindow {
         }
     }
     fn enable_key_repeat(&mut self, delay: i32, interval: i32) -> i32 {
-        println!("enable_key_repeat");
         return 0;
     }
     fn get_error(&mut self) -> *const u8 {
-        println!("get_error");
+        println!("requested error but we don't do those");
         return null();
         // return Box::leak(Box::new(CString::new("")));
     }
     fn get_key_state(&mut self, numkeys: *mut i32) -> *mut u8 {
-        println!("get_key_state");
         if numkeys != null_mut() {
             unsafe {
-                *numkeys = 0;
+                *numkeys = SDLKey_SDLK_LAST as i32;
             }
         }
         return self.state.keys.as_mut_ptr() as *mut u8;
     }
     fn get_mod_state(&mut self) -> type_defs::SDLMod {
-        println!("get_mod_state");
         return SDLMod_KMOD_NONE;
     }
     fn get_mouse_state(&mut self, x: *mut i32, y: *mut i32) -> u8 {
@@ -387,6 +386,10 @@ impl Window for WaylandWindow {
     }
     fn gl_get_proc_address(&mut self, proc: *const c_char) -> *mut c_void {
         self.state.wait_for_egl();
+        println!(
+            "getting {}",
+            unsafe { CStr::from_ptr(proc) }.to_string_lossy()
+        );
         unsafe {
             match self
                 .state
@@ -438,7 +441,6 @@ impl Window for WaylandWindow {
         unimplemented!("joystick_open");
     }
     fn num_joysticks(&mut self) -> i32 {
-        println!("num_joysticks");
         return 0;
     }
     fn poll_event(&mut self, event: *mut type_defs::SDL_Event) -> i32 {
@@ -492,10 +494,19 @@ impl Window for WaylandWindow {
                     }
                 }
                 return 1;
-            }
-
-            // quit state
-            if !self.state.running {
+            } else if self.state.active_keysyms.len() >= 1 {
+                if let Some(ev) = self.state.active_keysyms.pop() {
+                    if ev.0 == 0 {
+                        (*event).key.type_ = SDL_EventType::SDL_KEYUP as u8;
+                    } else {
+                        (*event).key.type_ = SDL_EventType::SDL_KEYDOWN as u8;
+                    }
+                    (*event).key.which = 0;
+                    (*event).key.state = ev.0 as u8;
+                    (*event).key.keysym = ev.1;
+                }
+                return 1;
+            } else if !self.state.running {
                 self.state.quit_attempts += 1;
                 (*event).quit.type_ = SDL_EventType::SDL_QUIT as u8;
                 if self.state.quit_attempts >= 10 {
@@ -533,7 +544,6 @@ impl Window for WaylandWindow {
         return 0;
     }
     fn warp_mouse(&mut self, x: u16, y: u16) {
-        println!("warp mouse: {} {}", x, y);
         if let Some(pointer) = &self.state.pointer {
             if let Some(pointer_warp) = &self.state.pointer_warp {
                 let surface = self.state.compositor_surface();

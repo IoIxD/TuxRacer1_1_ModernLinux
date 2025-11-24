@@ -14,6 +14,8 @@ wayland-client = "0.31.11"
 wayland-egl = "0.32.8"
 wayland-protocols = { version = "0.32.9", features = ["client", "staging", "unstable", "wayland-client"] }
 wayland-sys = { version = "0.31.7", features = ["client", "dlopen"] }
+xkbcommon-rs = "0.1.2"
+xkeysym = "0.2.1"
 
 [lib]
 crate-type =["cdylib"]

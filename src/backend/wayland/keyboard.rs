@@ -1,4 +1,43 @@
+use std::{
+    fs::File,
+    io::Read,
+    mem::ManuallyDrop,
+    os::fd::{AsRawFd, FromRawFd},
+};
+
 use wayland_client::{Dispatch, protocol::wl_keyboard::WlKeyboard};
+use xkbcommon_rs::{
+    Context, Keymap, KeymapFormat, State,
+    xkb_context::{self, ContextFlags},
+    xkb_keymap::CompileFlags,
+    xkb_state,
+};
+use xkeysym::Keysym;
+// use wkb::WKB;
+//
+use crate::type_defs::{
+    SDL_keysym, SDLKey_SDLK_0, SDLKey_SDLK_1, SDLKey_SDLK_2, SDLKey_SDLK_3, SDLKey_SDLK_4,
+    SDLKey_SDLK_5, SDLKey_SDLK_6, SDLKey_SDLK_7, SDLKey_SDLK_8, SDLKey_SDLK_9,
+    SDLKey_SDLK_BACKSLASH, SDLKey_SDLK_BACKSPACE, SDLKey_SDLK_CAPSLOCK, SDLKey_SDLK_DELETE,
+    SDLKey_SDLK_DOWN, SDLKey_SDLK_END, SDLKey_SDLK_EQUALS, SDLKey_SDLK_ESCAPE, SDLKey_SDLK_F1,
+    SDLKey_SDLK_F2, SDLKey_SDLK_F3, SDLKey_SDLK_F4, SDLKey_SDLK_F5, SDLKey_SDLK_F6, SDLKey_SDLK_F7,
+    SDLKey_SDLK_F8, SDLKey_SDLK_F9, SDLKey_SDLK_F10, SDLKey_SDLK_F11, SDLKey_SDLK_F12,
+    SDLKey_SDLK_HOME, SDLKey_SDLK_INSERT, SDLKey_SDLK_KP_DIVIDE, SDLKey_SDLK_KP_ENTER,
+    SDLKey_SDLK_KP_EQUALS, SDLKey_SDLK_KP_MINUS, SDLKey_SDLK_KP_MULTIPLY, SDLKey_SDLK_KP_PERIOD,
+    SDLKey_SDLK_KP_PLUS, SDLKey_SDLK_KP0, SDLKey_SDLK_KP1, SDLKey_SDLK_KP2, SDLKey_SDLK_KP3,
+    SDLKey_SDLK_KP4, SDLKey_SDLK_KP5, SDLKey_SDLK_KP6, SDLKey_SDLK_KP7, SDLKey_SDLK_KP8,
+    SDLKey_SDLK_KP9, SDLKey_SDLK_LALT, SDLKey_SDLK_LCTRL, SDLKey_SDLK_LEFT,
+    SDLKey_SDLK_LEFTBRACKET, SDLKey_SDLK_LSHIFT, SDLKey_SDLK_LSUPER, SDLKey_SDLK_NUMLOCK,
+    SDLKey_SDLK_PAGEDOWN, SDLKey_SDLK_PAGEUP, SDLKey_SDLK_PAUSE, SDLKey_SDLK_PRINT,
+    SDLKey_SDLK_RALT, SDLKey_SDLK_RCTRL, SDLKey_SDLK_RETURN, SDLKey_SDLK_RIGHT,
+    SDLKey_SDLK_RIGHTBRACKET, SDLKey_SDLK_RSHIFT, SDLKey_SDLK_RSUPER, SDLKey_SDLK_SCROLLOCK,
+    SDLKey_SDLK_SEMICOLON, SDLKey_SDLK_SPACE, SDLKey_SDLK_TAB, SDLKey_SDLK_UNKNOWN, SDLKey_SDLK_UP,
+    SDLKey_SDLK_a, SDLKey_SDLK_b, SDLKey_SDLK_c, SDLKey_SDLK_d, SDLKey_SDLK_e, SDLKey_SDLK_f,
+    SDLKey_SDLK_g, SDLKey_SDLK_h, SDLKey_SDLK_i, SDLKey_SDLK_j, SDLKey_SDLK_k, SDLKey_SDLK_l,
+    SDLKey_SDLK_m, SDLKey_SDLK_n, SDLKey_SDLK_o, SDLKey_SDLK_p, SDLKey_SDLK_q, SDLKey_SDLK_r,
+    SDLKey_SDLK_s, SDLKey_SDLK_t, SDLKey_SDLK_u, SDLKey_SDLK_v, SDLKey_SDLK_w, SDLKey_SDLK_x,
+    SDLKey_SDLK_y, SDLKey_SDLK_z,
+};
 
 use crate::backend::wayland::WaylandState;
 
@@ -11,6 +50,193 @@ impl Dispatch<WlKeyboard, ()> for WaylandState {
         conn: &wayland_client::Connection,
         qhandle: &wayland_client::QueueHandle<Self>,
     ) {
+        match event {
+            wayland_client::protocol::wl_keyboard::Event::Keymap { format, fd, size } => {
+                let mut f = ManuallyDrop::new(unsafe { File::from_raw_fd(fd.as_raw_fd()) });
+                let mut input = String::new();
+                f.read_to_string(&mut input).unwrap();
+
+                let keymap = Keymap::new_from_string(
+                    Context::new(ContextFlags::NO_FLAGS).unwrap(),
+                    &input,
+                    KeymapFormat::TextV1,
+                    CompileFlags::NO_FLAGS,
+                )
+                .unwrap();
+
+                state.xkb_state = Some(State::new(keymap.clone()));
+                state.xkb_keymap = Some(keymap);
+            }
+            wayland_client::protocol::wl_keyboard::Event::Enter {
+                serial,
+                surface,
+                keys,
+            } => {
+                // for key in keys {
+                //     if let Some(key_state) = state.xkb_state.as_ref() {
+                //         let sym = key_state.key_get_one_sym(key);
+                //         key_state.key_get_utf8(kc)
+                //     }
+                // }
+            }
+            wayland_client::protocol::wl_keyboard::Event::Key {
+                serial,
+                time,
+                key: key_,
+                state: keystate,
+            } => {
+                let keycode = key_ + 8;
+                if let Some(keymap) = state.xkb_keymap.as_ref() {
+                    if let Some(key_state) = state.xkb_state.as_ref() {
+                        if let wayland_client::WEnum::Value(keystate) = keystate {
+                            let layout = key_state.key_get_layout(keycode).unwrap();
+                            let level = keymap.num_levels_for_key(keycode, layout) - 1;
+                            let syms_out = keymap
+                                .key_get_syms_by_level(keycode, layout, level)
+                                .unwrap();
+                            state.keynum = syms_out.len();
+
+                            for sym in syms_out {
+                                let key = match Keysym::from(sym.raw()) {
+                                    Keysym::_0 => SDLKey_SDLK_0,
+                                    Keysym::_1 => SDLKey_SDLK_1,
+                                    Keysym::_2 => SDLKey_SDLK_2,
+                                    Keysym::_3 => SDLKey_SDLK_3,
+                                    Keysym::_4 => SDLKey_SDLK_4,
+                                    Keysym::_5 => SDLKey_SDLK_5,
+                                    Keysym::_6 => SDLKey_SDLK_6,
+                                    Keysym::_7 => SDLKey_SDLK_7,
+                                    Keysym::_8 => SDLKey_SDLK_8,
+                                    Keysym::_9 => SDLKey_SDLK_9,
+                                    Keysym::semicolon => SDLKey_SDLK_SEMICOLON,
+                                    Keysym::equal => SDLKey_SDLK_EQUALS,
+                                    Keysym::A => SDLKey_SDLK_a,
+                                    Keysym::B => SDLKey_SDLK_b,
+                                    Keysym::C => SDLKey_SDLK_c,
+                                    Keysym::D => SDLKey_SDLK_d,
+                                    Keysym::E => SDLKey_SDLK_e,
+                                    Keysym::F => SDLKey_SDLK_f,
+                                    Keysym::G => SDLKey_SDLK_g,
+                                    Keysym::H => SDLKey_SDLK_h,
+                                    Keysym::I => SDLKey_SDLK_i,
+                                    Keysym::J => SDLKey_SDLK_j,
+                                    Keysym::K => SDLKey_SDLK_k,
+                                    Keysym::L => SDLKey_SDLK_l,
+                                    Keysym::M => SDLKey_SDLK_m,
+                                    Keysym::N => SDLKey_SDLK_n,
+                                    Keysym::O => SDLKey_SDLK_o,
+                                    Keysym::P => SDLKey_SDLK_p,
+                                    Keysym::Q => SDLKey_SDLK_q,
+                                    Keysym::R => SDLKey_SDLK_r,
+                                    Keysym::S => SDLKey_SDLK_s,
+                                    Keysym::T => SDLKey_SDLK_t,
+                                    Keysym::U => SDLKey_SDLK_u,
+                                    Keysym::V => SDLKey_SDLK_v,
+                                    Keysym::W => SDLKey_SDLK_w,
+                                    Keysym::X => SDLKey_SDLK_x,
+                                    Keysym::Y => SDLKey_SDLK_y,
+                                    Keysym::Z => SDLKey_SDLK_z,
+                                    Keysym::bracketleft => SDLKey_SDLK_LEFTBRACKET,
+                                    Keysym::backslash => SDLKey_SDLK_BACKSLASH,
+                                    Keysym::bracketright => SDLKey_SDLK_RIGHTBRACKET,
+                                    // Keysym::grave => SDLKey_SDLK_GRAVE,
+                                    Keysym::space => SDLKey_SDLK_SPACE,
+                                    Keysym::Escape => SDLKey_SDLK_ESCAPE,
+                                    Keysym::Return => SDLKey_SDLK_RETURN,
+                                    Keysym::Tab => SDLKey_SDLK_TAB,
+                                    Keysym::BackSpace => SDLKey_SDLK_BACKSPACE,
+                                    Keysym::Insert => SDLKey_SDLK_INSERT,
+                                    Keysym::Delete => SDLKey_SDLK_DELETE,
+                                    Keysym::Right => SDLKey_SDLK_RIGHT,
+                                    Keysym::Left => SDLKey_SDLK_LEFT,
+                                    Keysym::Down => SDLKey_SDLK_DOWN,
+                                    Keysym::Up => SDLKey_SDLK_UP,
+                                    Keysym::Page_Up => SDLKey_SDLK_PAGEUP,
+                                    Keysym::Page_Down => SDLKey_SDLK_PAGEDOWN,
+                                    Keysym::Home => SDLKey_SDLK_HOME,
+                                    Keysym::End => SDLKey_SDLK_END,
+                                    Keysym::Caps_Lock => SDLKey_SDLK_CAPSLOCK,
+                                    Keysym::Scroll_Lock => SDLKey_SDLK_SCROLLOCK,
+                                    Keysym::Num_Lock => SDLKey_SDLK_NUMLOCK,
+                                    Keysym::_3270_PrintScreen => SDLKey_SDLK_PRINT,
+                                    Keysym::Pause => SDLKey_SDLK_PAUSE,
+                                    Keysym::F1 => SDLKey_SDLK_F1,
+                                    Keysym::F2 => SDLKey_SDLK_F2,
+                                    Keysym::F3 => SDLKey_SDLK_F3,
+                                    Keysym::F4 => SDLKey_SDLK_F4,
+                                    Keysym::F5 => SDLKey_SDLK_F5,
+                                    Keysym::F6 => SDLKey_SDLK_F6,
+                                    Keysym::F7 => SDLKey_SDLK_F7,
+                                    Keysym::F8 => SDLKey_SDLK_F8,
+                                    Keysym::F9 => SDLKey_SDLK_F9,
+                                    Keysym::F10 => SDLKey_SDLK_F10,
+                                    Keysym::F11 => SDLKey_SDLK_F11,
+                                    Keysym::F12 => SDLKey_SDLK_F12,
+                                    Keysym::Shift_L => SDLKey_SDLK_LSHIFT,
+                                    Keysym::Control_L => SDLKey_SDLK_LCTRL,
+                                    Keysym::Alt_L => SDLKey_SDLK_LALT,
+                                    Keysym::Super_L => SDLKey_SDLK_LSUPER,
+                                    Keysym::Shift_R => SDLKey_SDLK_RSHIFT,
+                                    Keysym::Control_R => SDLKey_SDLK_RCTRL,
+                                    Keysym::Alt_R => SDLKey_SDLK_RALT,
+                                    Keysym::Super_R => SDLKey_SDLK_RSUPER,
+                                    // Keysym::Menu => SDLKey_SDLK_KP_,
+                                    Keysym::KP_0 => SDLKey_SDLK_KP0,
+                                    Keysym::KP_1 => SDLKey_SDLK_KP1,
+                                    Keysym::KP_2 => SDLKey_SDLK_KP2,
+                                    Keysym::KP_3 => SDLKey_SDLK_KP3,
+                                    Keysym::KP_4 => SDLKey_SDLK_KP4,
+                                    Keysym::KP_5 => SDLKey_SDLK_KP5,
+                                    Keysym::KP_6 => SDLKey_SDLK_KP6,
+                                    Keysym::KP_7 => SDLKey_SDLK_KP7,
+                                    Keysym::KP_8 => SDLKey_SDLK_KP8,
+                                    Keysym::KP_9 => SDLKey_SDLK_KP9,
+                                    Keysym::KP_Decimal => SDLKey_SDLK_KP_PERIOD,
+                                    Keysym::KP_Divide => SDLKey_SDLK_KP_DIVIDE,
+                                    Keysym::KP_Multiply => SDLKey_SDLK_KP_MULTIPLY,
+                                    Keysym::KP_Subtract => SDLKey_SDLK_KP_MINUS,
+                                    Keysym::KP_Add => SDLKey_SDLK_KP_PLUS,
+                                    Keysym::KP_Enter => SDLKey_SDLK_KP_ENTER,
+                                    Keysym::KP_Equal => SDLKey_SDLK_KP_EQUALS,
+                                    _ => SDLKey_SDLK_UNKNOWN,
+                                };
+
+                                match keystate {
+                                    wayland_client::protocol::wl_keyboard::KeyState::Released => {
+                                        state.active_keysyms.push((
+                                            0,
+                                            SDL_keysym {
+                                                scancode: 25,
+                                                sym: key,
+                                                mod_: 0,
+                                                unicode: 0,
+                                            },
+                                        ));
+                                        state.keys[key as usize] = 0
+                                    }
+                                    wayland_client::protocol::wl_keyboard::KeyState::Pressed
+                                    | wayland_client::protocol::wl_keyboard::KeyState::Repeated => {
+                                        state.active_keysyms.push((
+                                            1,
+                                            SDL_keysym {
+                                                scancode: 25,
+                                                sym: key,
+                                                mod_: 0,
+                                                unicode: 0,
+                                            },
+                                        ));
+
+                                        state.keys[key as usize] = 1 as u32;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
         // match event {}
     }
 }
