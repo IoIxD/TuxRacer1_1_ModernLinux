@@ -1,3 +1,18 @@
 # Tux Racer 1.1 on Modern Linux
 
-This repo contains a revised installer + a custom SDL 1.2 compatibility layer for running Tux Racer 1.1 on Linux. It normally doesn't run due to an unknown error with SDL 1.2's official compatibility layer (though it may be due to the same issue with 32-bit Mesa that this project has to work around). The end goal is also to take advantage of any newer features of Linux to enhance the game (which may end up involving a custom launcher).
+Revised installer and custom SDL 1.2 translation layer for getting the commercial/boxed version of Tux Racer's Linux port working on modern Linux. This normally doesn't run due to a vague error with `SDL_SetVideoMode` in SDL 1.2, and when I failed to be able to debug SDL enough to actually find out why it was thrown, I ended up just writing my own translation layer tailored to the game's needs, without SDL (which was funner anyways).
+
+<img width="1919" height="931" alt="image" src="https://github.com/user-attachments/assets/e1b397f5-4534-453e-b00b-af891d401458" />
+
+## Usage
+Download the [zip](https://github.com/IoIxD/TuxRacer1_1_ModernLinux/releases) containing `setup.sh` and the `.so` file, and run the shell script. After it finishes installing, take note of any warnings/hints it gives you, including the instruction to move `libSDL-1.2.so.0` to the game's folder and to replace the game's copy of SDL mixer with a copy of SDL2 Mixer.
+
+A *known issue* I've observed on my AMD system is polygon corruption and an eventual crash. I haven't figured out how to fix this yet, but what I have yet to try is to have the game load an alternate `libGLU.so.1`, i.e. the one from ANGLE.
+
+## Checklist
+- [x] Basic window
+- [x] Keyboard/mouse support
+- [ ] X11 support
+- [ ] Gamepad support
+- [ ] HDR support?
+- [ ] if somebody wants to add raytracing using this i think that'd be pretty funny
