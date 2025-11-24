@@ -5,16 +5,6 @@ use std::{
     os::fd::{AsRawFd, FromRawFd},
 };
 
-use wayland_client::{Dispatch, protocol::wl_keyboard::WlKeyboard};
-use xkbcommon_rs::{
-    Context, Keymap, KeymapFormat, State,
-    xkb_context::{self, ContextFlags},
-    xkb_keymap::CompileFlags,
-    xkb_state,
-};
-use xkeysym::Keysym;
-// use wkb::WKB;
-//
 use crate::type_defs::{
     SDL_keysym, SDLKey_SDLK_0, SDLKey_SDLK_1, SDLKey_SDLK_2, SDLKey_SDLK_3, SDLKey_SDLK_4,
     SDLKey_SDLK_5, SDLKey_SDLK_6, SDLKey_SDLK_7, SDLKey_SDLK_8, SDLKey_SDLK_9,
@@ -38,6 +28,11 @@ use crate::type_defs::{
     SDLKey_SDLK_s, SDLKey_SDLK_t, SDLKey_SDLK_u, SDLKey_SDLK_v, SDLKey_SDLK_w, SDLKey_SDLK_x,
     SDLKey_SDLK_y, SDLKey_SDLK_z,
 };
+use wayland_client::{Dispatch, protocol::wl_keyboard::WlKeyboard};
+use xkbcommon_rs::{
+    Context, Keymap, KeymapFormat, State, xkb_context::ContextFlags, xkb_keymap::CompileFlags,
+};
+use xkeysym::Keysym;
 
 use crate::backend::wayland::WaylandState;
 
