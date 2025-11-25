@@ -243,7 +243,7 @@ impl WaylandWindow {
             _bitfield_align_1: [],
             _bitfield_1: unsafe { std::mem::transmute(255_u8) },
             blit_fill: 255,
-            video_mem: 2048000,
+            video_mem: 512000,
             vfmt: unsafe { std::mem::transmute(0) },
         };
 
@@ -418,7 +418,8 @@ impl Window for WaylandWindow {
         return &mut self.video_info;
     }
     fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
-        self.gl_attrs[attr as usize]
+        unsafe { *value = self.gl_attrs[attr as usize] };
+        return 0;
     }
     fn gl_get_proc_address(&mut self, proc: *const c_char) -> *mut c_void {
         self.state.wait_for_egl();
@@ -427,15 +428,11 @@ impl Window for WaylandWindow {
             unsafe { CStr::from_ptr(proc) }.to_string_lossy()
         );
         unsafe {
-            match self
-                .state
+            self.state
                 .egl()
                 .get_proc_address(proc)
                 .expect("eglGetProcAddress missing")
-            {
-                Some(a) => a as *mut c_void,
-                None => null_mut(),
-            }
+                .expect("eglGetProcAddress missing") as *mut c_void
         }
     }
     fn gl_set_attribute(&mut self, attr: type_defs::SDL_GLattr, value: i32) -> i32 {
