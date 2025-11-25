@@ -7,11 +7,15 @@ Revised installer and custom SDL 1.2 translation layer for getting the commercia
 **Currently this only supports Wayland** due to my choice to forgo any libraries and write directly in it, and for that matter it won't have window decorations on GNOME because it relies on the XDG Decoration Manager protocol that GNOME doesn't want to support. It's recommended you use KDE. X11 support may be added in the future.
 
 ## Usage
+
 Download the [zip](https://github.com/IoIxD/TuxRacer1_1_ModernLinux/releases) containing `setup.sh` and the `.so` file, and run the shell script. After it finishes installing, take note of any warnings/hints it gives you, including the instruction to move `libSDL-1.2.so.0` to the game's folder and to replace the game's copy of SDL mixer with a copy of SDL2 Mixer.
 
-A *known issue* I've observed on my AMD system is polygon corruption and an eventual crash. I haven't figured out how to fix this yet, but what I have yet to try is to have the game load an alternate `libGLU.so.1`, i.e. the one from ANGLE.
+## Note for AMD GPUs
+
+Mesa will default to using the Zink driver on AMD, which results in instability with the game's graphics and an eventual crash. To run this properly, you have to set `MESA_LOADER_DRIVER_OVERRIDE` to `llvmpipe`, either in your environment or by modifying lines 28 and 30 of the launcher script to be prefixed with `MESA_LOADER_DRIVER_OVERRIDE=llvmpipe`
 
 ## Checklist
+
 - [x] Basic window
 - [x] Keyboard/mouse support
 - [ ] [Fullscreen](https://github.com/IoIxD/TuxRacer1_1_ModernLinux/issues/1/)
