@@ -8,6 +8,10 @@ use std::ffi::{CStr, c_char, c_int, c_void};
 
 use crate::{sigsegv_handler, type_defs, window};
 
+unsafe extern "C" {
+    fn Mix_AllocateChannels(numchans: c_int) -> c_int;
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_Delay(ms: u32) {
     window().lock().delay(ms);
@@ -62,6 +66,9 @@ pub unsafe extern "C" fn SDL_Init(flags: u32) -> c_int {
         let f = sigsegv_handler as *const fn(libc::c_int);
         libc::signal(libc::SIGSEGV, f as libc::size_t);
     }
+
+    // Also mix channel allocation
+    Mix_AllocateChannels(6969);
 
     window().lock().init(flags)
 }
