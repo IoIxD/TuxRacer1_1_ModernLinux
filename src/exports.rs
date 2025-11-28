@@ -6,7 +6,11 @@
 
 use std::ffi::{CStr, c_char, c_int, c_void};
 
-use crate::{sigsegv_handler, type_defs, window};
+use crate::{
+    sigsegv_handler,
+    type_defs::{self, SDLMod_KMOD_NONE},
+    window,
+};
 
 unsafe extern "C" {
     fn Mix_AllocateChannels(numchans: c_int) -> c_int;
@@ -30,7 +34,7 @@ pub unsafe extern "C" fn SDL_GetKeyState(numkeys: *mut c_int) -> *mut u8 {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_GetModState() -> type_defs::SDLMod {
-    window().lock().get_mod_state()
+    return SDLMod_KMOD_NONE;
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn SDL_GetMouseState(x: *mut c_int, y: *mut c_int) -> u8 {

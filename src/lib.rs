@@ -14,6 +14,7 @@ mod type_defs;
 
 mod backend;
 mod egl;
+mod xcb;
 
 mod make_mesa_happy;
 
@@ -26,10 +27,9 @@ use std::{
 use libc::strsignal;
 use parking_lot::Mutex;
 
-use crate::backend::{Window, wayland::WaylandWindow};
+use crate::backend::{Window, choose_window};
 
-static mut WINDOW: Mutex<LazyLock<Box<dyn Window>>> =
-    Mutex::new(LazyLock::new(|| Box::new(WaylandWindow::new())));
+static mut WINDOW: Mutex<LazyLock<Box<dyn Window>>> = Mutex::new(LazyLock::new(|| choose_window()));
 
 pub fn window<'a>() -> &'a Mutex<LazyLock<Box<dyn Window>>> {
     unsafe { &WINDOW }

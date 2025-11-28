@@ -58,7 +58,7 @@ use crate::{
     egl::{EGL, EGL_TRUE, EGLBoolean, EGLDisplay, EGLSurface},
     type_defs::{
         self, SDL_EventType, SDL_Rect, SDL_Surface, SDL_VideoInfo, SDL_keysym, SDLKey,
-        SDLKey_SDLK_LAST, SDLMod_KMOD_NONE,
+        SDLKey_SDLK_LAST,
     },
 };
 use wayland_protocols::{
@@ -101,7 +101,6 @@ pub struct WaylandState {
     active_keysyms: Vec<(u32, SDL_keysym)>,
     xkb_keymap: Option<Keymap>,
     xkb_state: Option<State>,
-    keynum: usize,
 
     // resize_happened: bool,
     // resized_x: i32,
@@ -116,12 +115,6 @@ pub struct WaylandState {
     toplevel_icon: Option<XdgToplevelIconV1>,
     fifo_manager: Option<WpFifoManagerV1>,
     fifo: Option<WpFifoV1>,
-}
-
-impl WaylandState {
-    pub fn wait_for_egl(&self) {
-        while !self.configured {}
-    }
 }
 
 impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
@@ -199,7 +192,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
 pub struct WaylandWindow {
     state: WaylandState,
     event_queue: EventQueue<WaylandState>,
-    video_info: SDL_VideoInfo,
     fake_surface: SDL_Surface,
     gl_attrs: [i32; 32],
 }
@@ -239,18 +231,9 @@ impl WaylandWindow {
         state.keys.resize(SDLKey_SDLK_LAST as usize, 0);
         event_queue.roundtrip(&mut state).unwrap();
 
-        let video_info = SDL_VideoInfo {
-            _bitfield_align_1: [],
-            _bitfield_1: unsafe { std::mem::transmute(255_u8) },
-            blit_fill: 255,
-            video_mem: 512000,
-            vfmt: unsafe { std::mem::transmute(0) },
-        };
-
         Self {
             state,
             event_queue,
-            video_info,
             fake_surface,
             gl_attrs: [0; _],
         }
@@ -323,9 +306,7 @@ impl WaylandState {
     pub fn compositor_surface(&self) -> &WlSurface {
         self.compositor_surface.as_ref().unwrap()
     }
-    pub fn egl(&self) -> &EGL {
-        self.egl.as_ref().unwrap()
-    }
+
     pub fn egl_surface(&self) -> &WlEglSurface {
         self.egl_surface.as_ref().unwrap()
     }
@@ -382,15 +363,6 @@ impl Window for WaylandWindow {
         self.state.running = false;
     }
 
-    fn delay(&mut self, ms: u32) {
-        let time = SystemTime::now();
-        while time.elapsed().unwrap().as_millis() <= ms as u128 {
-            self.event_loop();
-        }
-    }
-    fn enable_key_repeat(&mut self, delay: i32, interval: i32) -> i32 {
-        return 0;
-    }
     fn get_error(&mut self) -> *const u8 {
         println!("requested error but we don't do those");
         return null();
@@ -404,9 +376,7 @@ impl Window for WaylandWindow {
         }
         return self.state.keys.as_mut_ptr() as *mut u8;
     }
-    fn get_mod_state(&mut self) -> type_defs::SDLMod {
-        return SDLMod_KMOD_NONE;
-    }
+
     fn get_mouse_state(&mut self, x: *mut i32, y: *mut i32) -> u8 {
         unsafe {
             *x = self.state.last_pointer_x as i32;
@@ -414,80 +384,7 @@ impl Window for WaylandWindow {
         }
         return 0;
     }
-    fn get_video_info(&mut self) -> *mut type_defs::SDL_VideoInfo {
-        return &mut self.video_info;
-    }
-    fn gl_get_attribute(&mut self, attr: type_defs::SDL_GLattr, value: *mut i32) -> i32 {
-        unsafe { *value = self.gl_attrs[attr as usize] };
-        return 0;
-    }
-    fn gl_get_proc_address(&mut self, proc: *const c_char) -> *mut c_void {
-        self.state.wait_for_egl();
-        println!(
-            "getting {}",
-            unsafe { CStr::from_ptr(proc) }.to_string_lossy()
-        );
-        unsafe {
-            self.state
-                .egl()
-                .get_proc_address(proc)
-                .expect("eglGetProcAddress missing")
-                .expect("eglGetProcAddress missing") as *mut c_void
-        }
-    }
-    fn gl_set_attribute(&mut self, attr: type_defs::SDL_GLattr, value: i32) -> i32 {
-        println!("{:?} => {}", attr, value);
-        self.gl_attrs[attr as usize] = value;
-        0
-    }
-    fn gl_swap_buffers(&self) {
-        let egl = self.state.egl();
-        if let Some(fifo) = self.state.fifo.as_ref() {
-            fifo.wait_barrier();
-        }
 
-        unsafe {
-            self.state.panic_on_error(
-                "Error swapping buffers",
-                egl.swap_buffers(self.state.display, self.state.native_surface)
-                    .unwrap(),
-            );
-
-            if let Some(fifo) = self.state.fifo.as_ref() {
-                // Since we have a FIFO, its safe to set the swap interval to 0, turning off vsync
-                self.state.panic_on_error(
-                    "Error swapping buffers",
-                    egl.swap_interval(self.state.display, 0).unwrap(),
-                );
-            }
-        }
-    }
-
-    fn joystick_event_state(&mut self, state: i32) -> i32 {
-        return 0;
-        // unimplemented!("joystick_event_state");
-    }
-    fn joystick_get_axis(&mut self, joystick: *mut type_defs::SDL_Joystick, axis: i32) -> i16 {
-        unimplemented!("joystick_get_axis");
-    }
-    fn joystick_get_button(&mut self, joystick: *mut type_defs::SDL_Joystick, button: i32) -> u8 {
-        unimplemented!("joystick_get_button");
-    }
-    fn joystick_name(&mut self, index: i32) -> *const c_char {
-        unimplemented!("joystick_name");
-    }
-    fn joystick_num_axes(&mut self, joystick: *mut type_defs::SDL_Joystick) -> i32 {
-        unimplemented!("joystick_num_axes");
-    }
-    fn joystick_num_buttons(&mut self, joystick: *mut type_defs::SDL_Joystick) -> i32 {
-        unimplemented!("joystick_num_buttons");
-    }
-    fn joystick_open(&mut self, index: i32) -> *mut type_defs::SDL_Joystick {
-        unimplemented!("joystick_open");
-    }
-    fn num_joysticks(&mut self) -> i32 {
-        return 0;
-    }
     fn poll_event(&mut self, event: *mut type_defs::SDL_Event) -> i32 {
         self.event_loop();
 
@@ -585,7 +482,7 @@ impl Window for WaylandWindow {
         bpp: i32,
         flags: u32,
     ) -> *mut type_defs::SDL_Surface {
-        self.state.wait_for_egl();
+        self.wait_for_egl();
 
         self.fake_surface.w = width;
         self.fake_surface.h = height;
@@ -629,6 +526,40 @@ impl Window for WaylandWindow {
         self.state.xdg_top_level().set_title(title.into());
 
         // we set the icon in xdg.rs
+    }
+
+    fn egl(&self) -> &EGL {
+        self.state.egl.as_ref().unwrap()
+    }
+
+    fn wait_for_egl(&mut self) {
+        while !self.state.configured {
+            self.event_loop();
+        }
+    }
+
+    fn egl_display(&self) -> crate::egl::NativeDisplayType {
+        self.state.display
+    }
+
+    fn egl_surface(&self) -> EGLSurface {
+        self.state.native_surface
+    }
+    fn gl_swap_buffers(&mut self) {
+        if let Some(fifo) = self.state.fifo.as_ref() {
+            fifo.wait_barrier();
+        }
+        self.gl_swap_buffers_impl();
+        if let Some(fifo) = self.state.fifo.as_ref() {
+            // Since we have a FIFO, its safe to set the swap interval to 0, turning off vsync
+            unsafe {
+                let egl = self.egl();
+                egl.panic_on_error(
+                    "Error swapping buffers",
+                    egl.swap_interval(self.state.display, 0).unwrap(),
+                )
+            };
+        }
     }
 }
 delegate_noop!(WaylandState: ignore WlCompositor);

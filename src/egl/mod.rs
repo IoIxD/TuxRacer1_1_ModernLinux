@@ -1,13 +1,18 @@
 #![allow(dead_code)]
 #![allow(unsafe_op_in_unsafe_fn)]
 
-// Custom EGL bindings. Unlike other crate(s).unwrap(), this one not only supports extensions
-// but aims to be as straightforward as possible.
-
 mod ffi;
 pub use ffi::*;
+use gl::EXTENSIONS;
 
-use std::{error::Error, ffi::c_void, fmt::Display, os::raw::c_char};
+use std::{
+    error::Error,
+    ffi::{CStr, CString, c_void},
+    fmt::Display,
+    mem::MaybeUninit,
+    os::raw::c_char,
+    ptr::null_mut,
+};
 
 use libloading::os::unix::{Library, Symbol};
 
@@ -75,6 +80,188 @@ impl EGL {
             sym_table,
         }
     }
+
+    pub unsafe fn panic_on_error(&self, reason: &str, err: EGLBoolean) {
+        if err != EGL_TRUE {
+            panic!(
+                "{}: {} ({:X})",
+                reason,
+                self.get_error_str().unwrap(),
+                self.get_error().unwrap()
+            );
+        }
+    }
+
+    // Helper function for setting up EGL given the parameters
+    pub unsafe fn setup(
+        platform: EGLenum,
+        native_display: EGLNativeDisplayType,
+        native_window: EGLWindowType,
+    ) -> (EGL, EGLSurface, EGLDisplay) {
+        let egl = EGL::new();
+
+        let extensions =
+            CStr::from_ptr(egl.query_string(null_mut(), EGL_EXTENSIONS as i32).unwrap())
+                .to_string_lossy()
+                .to_string();
+
+        println!("avaliable extensions: {}", extensions);
+
+        let display = egl
+            .get_platform_display_ext(platform, native_display, null_mut())
+            .or(egl.get_platform_display(platform, native_display, null_mut()))
+            .unwrap() as EGLDisplay;
+
+        assert!(!display.is_null());
+        println!("got display ({:?})", display);
+
+        let mut major = 0;
+        let mut minor = 0;
+        egl.panic_on_error(
+            "Error on initialization",
+            egl.initialize(display, &mut major, &mut minor).unwrap(),
+        );
+        println!("Initialized EGL version {}.{}", major, minor);
+
+        egl.panic_on_error(
+            "Error on binding API",
+            egl.bind_api(EGL_OPENGL_API).unwrap(),
+        );
+
+        let attributes: [i32; _] = [
+            EGL_SURFACE_TYPE as i32,
+            EGL_WINDOW_BIT as i32,
+            //
+            EGL_RENDERABLE_TYPE as i32,
+            EGL_OPENGL_BIT as i32,
+            //
+            EGL_RED_SIZE as i32,
+            8,
+            EGL_GREEN_SIZE as i32,
+            8,
+            EGL_BLUE_SIZE as i32,
+            8,
+            EGL_BUFFER_SIZE as i32,
+            8,
+            EGL_DEPTH_SIZE as i32,
+            -1,
+            EGL_STENCIL_SIZE as i32,
+            8,
+            EGL_NONE as i32,
+        ];
+
+        let mut config_num: EGLint = 0;
+        let mut matched_config_num: EGLint = 0;
+
+        egl.panic_on_error(
+            "Error getting configs",
+            egl.get_configs(display, null_mut(), 0, &mut config_num)
+                .unwrap(),
+        );
+
+        let mut configs: Vec<EGLConfig> = Vec::new();
+        configs.resize(config_num as usize, null_mut());
+
+        egl.panic_on_error(
+            "Error choosing config",
+            egl.choose_config(
+                display,
+                attributes.as_ptr(),
+                configs.as_mut_ptr(),
+                config_num,
+                &mut matched_config_num,
+            )
+            .unwrap(),
+        );
+
+        // get a surface using the first config that yields a valid result
+        let mut n = 0;
+        let mut surface: MaybeUninit<EGLSurface> = MaybeUninit::uninit();
+        for i in 0..matched_config_num as usize {
+            match native_window {
+                EGLWindowType::Window(native_window) => {
+                    surface.write(
+                        egl.create_window_surface(display, configs[i], native_window, null_mut())
+                            .unwrap(),
+                    );
+                }
+                EGLWindowType::Pointer(ptr) => {
+                    surface.write(
+                        egl.create_platform_window_surface(display, configs[i], ptr, null_mut())
+                            .unwrap(),
+                    );
+                }
+            }
+
+            if !surface.assume_init().is_null() {
+                n = i;
+                break;
+            }
+            let mut vis_id = 0;
+            if egl
+                .get_config_attrib(
+                    display,
+                    configs[i as usize],
+                    EGL_NATIVE_VISUAL_ID as i32,
+                    &mut vis_id,
+                )
+                .unwrap()
+                == EGL_FALSE
+            {
+                continue;
+            };
+
+            println!(
+                "create_window_surface using config {:?} returns null",
+                vis_id
+            );
+        }
+        let surface = surface.assume_init();
+        if surface.is_null() {
+            panic!("null egl surface!");
+        }
+        println!("got surface ({:?})", surface);
+
+        let context_attributes = [
+            EGL_CONTEXT_MAJOR_VERSION as i32,
+            1,
+            EGL_CONTEXT_MINOR_VERSION as i32,
+            0,
+            EGL_CONTEXT_OPENGL_PROFILE_MASK as i32,
+            EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT as i32,
+            EGL_NONE as i32,
+        ];
+
+        let window = MaybeUninit::<EGLNativeWindowType>::uninit();
+
+        let ctx = egl
+            .create_context(
+                display,
+                configs[n as usize],
+                null_mut(),
+                context_attributes.as_ptr(),
+            )
+            .unwrap();
+
+        egl.panic_on_error(
+            "Error making context current",
+            egl.make_current(display, surface, surface, ctx).unwrap(),
+        );
+
+        let new_ctx = egl.get_current_context().unwrap();
+        assert!(ctx == new_ctx);
+
+        gl::load_with(|name| {
+            let cstr = CString::new(name).unwrap();
+            match egl.get_proc_address(cstr.as_ptr()).unwrap() {
+                Some(a) => a as *const c_void,
+                None => null_mut(),
+            }
+        });
+
+        (egl, surface, display)
+    }
+
     gen_func!(choose_config, (
             dpy: EGLDisplay,
             attrib_list: *const EGLint,
@@ -700,6 +887,7 @@ impl EGL {
         }
     }
 
+    gen_func!(dup_native_fence, (disp: EGLDisplay, sync: EGLSync) -> i32);
     /*gen_func!(create_wayland_buffer_from_image_wl, (dpy: EGLDisplay, image: EGLImageKHR) -> *mut wl_buffer,
     );*/
 }
@@ -828,6 +1016,7 @@ struct EGLSymbolTable {
     bind_wayland_display_wl: crate::egl::ffi::PFNEGLBINDWAYLANDDISPLAYWLPROC,
     unbind_wayland_display_wl: crate::egl::ffi::PFNEGLUNBINDWAYLANDDISPLAYWLPROC,
     query_wayland_buffer_wl: crate::egl::ffi::PFNEGLQUERYWAYLANDBUFFERWLPROC,
+    dup_native_fence: crate::egl::ffi::PFNEGLDUPNATIVEFENCEFDANDROIDPROC,
 }
 
 macro_rules! func_load {
@@ -1050,6 +1239,12 @@ impl EGLSymbolTable {
             bind_wayland_display_wl: func_load!(get_proc_address, c"eglBindWaylandDisplayWL"),
             unbind_wayland_display_wl: func_load!(get_proc_address, c"eglUnbindWaylandDisplayWL"),
             query_wayland_buffer_wl: func_load!(get_proc_address, c"eglQueryWaylandBufferWL"),
+            dup_native_fence: func_load!(get_proc_address, c"eglDupNativeFenceFDANDROID"),
         }
     }
+}
+
+pub enum EGLWindowType {
+    Window(EGLNativeWindowType),
+    Pointer(*mut c_void),
 }
