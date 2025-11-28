@@ -1,4 +1,5 @@
-use nix::sys::termios::{Termios, cfmakeraw, tcgetattr, tcsetattr};
+use nix::sys::termios::{FlushArg, Termios, cfmakeraw, tcflush, tcgetattr, tcsetattr};
+use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::stdin;
 use std::os::raw::c_void;
@@ -7,9 +8,12 @@ use std::ptr::{null, null_mut};
 use std::sync::Arc;
 
 use drm::Device;
-use drm::control::Device as ControlDevice;
 use drm::control::connector::State;
-use gbm::{AsRaw as GbmAsRaw, BufferObjectFlags, Device as GBMDevice, Surface};
+use drm::control::{Device as ControlDevice, PageFlipFlags, PageFlipTarget};
+use gbm::{
+    AsRaw as GbmAsRaw, BufferObject, BufferObjectFlags, BufferObjectHandle, Device as GBMDevice,
+    Surface,
+};
 use input::event::KeyboardEvent;
 use input::ffi::{libinput_event_keyboard_get_key, libinput_event_keyboard_get_key_state};
 use input::{AsRaw, Libinput, LibinputInterface};
@@ -94,6 +98,7 @@ pub struct DRMWindow {
 
     connector: drm::control::connector::Info,
     crtc: drm::control::crtc::Handle,
+
     // prev_fence: Option<EGLFence>,
     // crtc_properties: HashMap<String, property::Info>,
     // plane: drm::control::plane::Handle,
@@ -102,6 +107,8 @@ pub struct DRMWindow {
     xkb_keymap: Keymap,
     xkb_state: xkbcommon_rs::State,
     pending_keys: Vec<(u32, SDL_keysym)>,
+
+    framebuffers: HashMap<u64, drm::control::framebuffer::Handle>,
 
     termios: Termios,
 }
@@ -231,7 +238,7 @@ impl DRMWindow {
             gbm_surface,
             connector,
             crtc,
-            // prev_fence: None,
+            framebuffers: HashMap::new(),
             input,
             xkb_keymap,
             xkb_state,
@@ -298,9 +305,9 @@ impl Window for DRMWindow {
     }
 
     fn quit(&mut self) {
-        // let t = self.termios.clone();
-        // tcflush(stdin(), FlushArg::TCIOFLUSH).unwrap();
-        // tcsetattr(stdin(), nix::sys::termios::SetArg::TCSANOW, &t).unwrap();
+        let t = self.termios.clone();
+        tcflush(stdin(), FlushArg::TCIOFLUSH).unwrap();
+        tcsetattr(stdin(), nix::sys::termios::SetArg::TCSANOW, &t).unwrap();
     }
 
     fn get_error(&mut self) -> *const u8 {
@@ -399,6 +406,8 @@ impl Window for DRMWindow {
         let egl = &self.egl();
         self.gl_swap_buffers_impl();
         // let fence = unsafe { EGLFence::new(self) };
+        //
+        let mode = self.connector.modes().first().unwrap();
 
         unsafe {
             let front_buffer = self.gbm_surface.lock_front_buffer().unwrap();
@@ -410,15 +419,20 @@ impl Window for DRMWindow {
             //     self.prev_fence = None;
             // }
 
-            let fb = self.card.add_framebuffer(&front_buffer, 24, bpp).unwrap();
+            if !self.framebuffers.contains_key(&handle.u64_) {
+                self.framebuffers.insert(
+                    handle.u64_,
+                    self.card.add_framebuffer(&front_buffer, 24, 32).unwrap(),
+                );
+            }
 
             self.card
                 .set_crtc(
                     self.crtc,
-                    Some(fb),
+                    self.framebuffers.get(&handle.u64_).copied(),
                     (0, 0),
                     &[self.connector.handle()],
-                    self.connector.modes().first().copied(),
+                    Some(*mode),
                 )
                 .unwrap();
 
